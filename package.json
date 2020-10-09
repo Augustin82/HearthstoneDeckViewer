@@ -12,9 +12,29 @@
   "dependencies": {
     "browserify": "^16.2.3",
     "deckstrings": "^2.0.0",
+    "eslint": "^7.11.0",
     "express": "^4.16.4",
     "request": "^2.88.0",
     "request-promise-native": "^1.0.7"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^3.0.0",
+    "@typescript-eslint/parser": "^3.0.0",
+    "concurrently": "^5.2.0",
+    "eslint": "^7.1.0",
+    "eslint-config-prettier": "^6.11.0",
+    "eslint-plugin-jest": "^22.4.1",
+    "eslint-plugin-prettier": "^3.1.3",
+    "glob": "^5.0.14",
+    "prettier": "^2.0.5",
+    "prettier_d": "^5.7.4",
+    "typescript": "^3.8.3",
+    "yadda": "^1.5.0"
+  },
+  "prettier": {
+    "tabWidth": 4,
+    "printWidth": 80,
+    "trailingComma": "es5"
   },
   "scripts": {
     "clean": "rm -rf functions-build && mkdir functions-build",
