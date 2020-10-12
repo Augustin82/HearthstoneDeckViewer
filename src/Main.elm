@@ -2,11 +2,13 @@ port module Main exposing (main)
 
 import Browser
 import Dict
-import Element
+import Element exposing (..)
+import Element.Background as Background
+import Element.Border as Border
+import Element.Font as Font
 import Element.Input as Input
 import Element.Region as Region
-import Html exposing (..)
-import Html.Attributes exposing (..)
+import Html.Attributes as HA
 import Http
 import Json.Decode as D
 import RemoteData exposing (RemoteData(..), WebData)
@@ -181,8 +183,7 @@ deckCardsDecoder =
 
 
 type Msg
-    = NoOp
-    | UpdateInput String
+    = UpdateInput String
     | GotCards (WebData Cards)
     | AddDecks
     | DecodedDeck (Result D.Error Deck)
@@ -248,105 +249,144 @@ update msg model =
         GotCards result ->
             ( { model | cards = result }, Cmd.none )
 
-        NoOp ->
-            ( model, Cmd.none )
-
 
 view : Model -> Browser.Document Msg
 view { pasted, cards, decodedDeck } =
     { title = "Elm version of HS Deck Viewer"
     , body =
-        [ Element.layout [] <|
-            Element.column [] <|
-                [ Element.column [ Element.htmlAttribute <| id "header-section" ]
-                    [ Element.el [ Region.heading 1 ] <| Element.text "Hearthstone Deck Viewer"
-                    , Element.row []
-                        [ Input.text
-                            [ Element.htmlAttribute <| id "deckstring"
-                            , Element.htmlAttribute <| name "deckstring"
-                            ]
-                            { placeholder =
-                                Just <|
-                                    Input.placeholder [] <|
-                                        Element.text "Input deck code(s) here"
-                            , label = Input.labelHidden ""
-                            , onChange = UpdateInput
-                            , text = pasted
-                            }
-                        , Input.button
-                            [ Element.htmlAttribute <| id "addButton"
-                            , Element.htmlAttribute <| class "btn btn-outline-light"
-                            ]
-                            { onPress = Just AddDecks
-                            , label = Element.text "Add Deck(s)"
-                            }
-                        ]
-                    , viewDeck cards decodedDeck
-                    , Element.el [ Element.htmlAttribute <| class "form-text text-muted mb-2" ] <|
-                        Element.text "Separate multiple deck codes with whitespace or commas. Individual deck strings copied from the game client are also supported."
-                    , Element.row [ Element.htmlAttribute <| id "shortURLForm" ]
-                        [ Input.button
-                            [ Element.htmlAttribute <| id "urlButton"
-                            , Element.htmlAttribute <| class "btn btn-outline-light"
-                            ]
-                            { onPress = Nothing
-                            , label = Element.text "Generate Short URL"
-                            }
-                        , Input.text
-                            [ Element.htmlAttribute <|
-                                id "urlInput"
-                            , Element.htmlAttribute <| name "url"
-                            ]
-                            { onChange = always NoOp
-                            , placeholder = Nothing
-                            , label = Input.labelHidden ""
-                            , text = ""
-                            }
-                        , Input.button
-                            [ Element.htmlAttribute <| id "copyButton"
-                            , Element.htmlAttribute <| class "btn btn-outline-light"
-                            ]
-                            { onPress = Nothing
-                            , label = Element.image [ Element.htmlAttribute <| class "clippy" ] { src = "images/clippy.svg", description = "Copy to clipboard" }
-                            }
-                        ]
-                    , Input.button
-                        [ Element.htmlAttribute <| id "removeButton"
-                        , Element.htmlAttribute <| class "btn btn-outline-light"
-                        ]
-                        { onPress = Nothing
-                        , label = Element.text "Remove All Decks"
-                        }
+        [ layout
+            [ height fill
+            , width fill
+            , Background.color <| rgb255 22 26 58
+            ]
+          <|
+            column [ height fill, width fill ] <|
+                [ el
+                    [ htmlAttribute <| HA.id "header-section"
+                    , height fill
+                    , width fill
+                    , htmlAttribute <| HA.style "min-height" "100vh"
                     ]
-                , Element.el [ Element.htmlAttribute <| id "decks" ] <|
-                    Element.none
+                  <|
+                    el
+                        [ height fill
+                        , width fill
+                        , padding 50
+                        ]
+                    <|
+                        column
+                            [ centerY, width fill ]
+                            [ el
+                                [ Region.heading 1
+                                , padding 50
+                                , Font.color <| rgb255 255 255 255
+                                , Font.size 40
+                                , centerX
+                                ]
+                              <|
+                                text "Hearthstone Deck Viewer"
+                            , row [ width fill ]
+                                [ el [ width <| fillPortion 1 ] <| none
+                                , column [ width <| fillPortion 8, htmlAttribute <| HA.style "max-width" "800px", spacing 10 ]
+                                    [ row [ width fill, Font.color <| rgb255 0xF8 0xF9 0xFA ]
+                                        [ Input.text
+                                            [ htmlAttribute <| HA.id "deckstring"
+                                            , htmlAttribute <| HA.name "deckstring"
+                                            , height fill
+                                            , width fill
+                                            , Border.roundEach <| { topLeft = 5, topRight = 0, bottomLeft = 5, bottomRight = 0 }
+                                            ]
+                                            { placeholder =
+                                                Just <|
+                                                    Input.placeholder [] <|
+                                                        text "Input deck code(s) here"
+                                            , label = Input.labelHidden ""
+                                            , onChange = UpdateInput
+                                            , text = pasted
+                                            }
+                                        , Input.button
+                                            [ htmlAttribute <| HA.id "addButton"
+                                            , Font.color <| rgb255 255 255 255
+                                            , Border.widthEach { top = 1, right = 1, bottom = 1, left = 0 }
+                                            , Border.color <| rgb255 255 255 255
+                                            , height fill
+                                            , paddingXY 12 6
+                                            , Border.roundEach <| { topLeft = 0, topRight = 5, bottomLeft = 0, bottomRight = 5 }
+                                            ]
+                                            { onPress = Just AddDecks
+                                            , label = text "Add Deck(s)"
+                                            }
+                                        ]
+                                    , el [ Font.size 13, Font.color <| rgb255 0x6C 0x75 0x7D, centerX ] <|
+                                        text "Separate multiple deck codes with whitespace or commas. Individual deck strings copied from the game client are also supported."
+                                    ]
+                                , el [ width <| fillPortion 1 ] <| none
+                                ]
+                            , viewDeck cards decodedDeck
+
+                            -- , row [ htmlAttribute <| id "shortURLForm" ]
+                            --     [ Input.button
+                            --         [ htmlAttribute <| id "urlButton"
+                            --         , htmlAttribute <| class "btn btn-outline-light"
+                            --         ]
+                            --         { onPress = Nothing
+                            --         , label = text "Generate Short URL"
+                            --         }
+                            --     , Input.text
+                            --         [ htmlAttribute <|
+                            --             id "urlInput"
+                            --         , htmlAttribute <| name "url"
+                            --         ]
+                            --         { onChange = always NoOp
+                            --         , placeholder = Nothing
+                            --         , label = Input.labelHidden ""
+                            --         , text = ""
+                            --         }
+                            --     , Input.button
+                            --         [ htmlAttribute <| id "copyButton"
+                            --         , htmlAttribute <| class "btn btn-outline-light"
+                            --         ]
+                            --         { onPress = Nothing
+                            --         , label = image [ htmlAttribute <| class "clippy" ] { src = "images/clippy.svg", description = "Copy to clipboard" }
+                            --         }
+                            --     ]
+                            -- , Input.button
+                            --     [ htmlAttribute <| id "removeButton"
+                            --     , htmlAttribute <| class "btn btn-outline-light"
+                            --     ]
+                            --     { onPress = Nothing
+                            --     , label = text "Remove All Decks"
+                            --     }
+                            ]
+                , el [ htmlAttribute <| HA.id "decks" ] <|
+                    none
                 ]
         ]
     }
 
 
-viewDeck : WebData Cards -> RemoteData String Deck -> Element.Element msg
+viewDeck : WebData Cards -> RemoteData String Deck -> Element msg
 viewDeck cards deck =
     case deck of
         NotAsked ->
-            Element.none
+            none
 
         Loading ->
-            Element.none
+            none
 
         Failure err ->
-            Element.el [] <| Element.text err
+            el [] <| text err
 
         Success d ->
-            Element.column [] <|
+            column [] <|
                 List.map
                     (\( maybeCard, qty ) ->
                         case maybeCard of
                             Nothing ->
-                                Element.text "?"
+                                text "?"
 
                             Just { name } ->
-                                Element.row [] [ Element.text <| String.fromInt qty, Element.text " x ", Element.text name ]
+                                row [] [ text <| String.fromInt qty, text " x ", text name ]
                     )
                 <|
                     List.map
