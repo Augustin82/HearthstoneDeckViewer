@@ -426,21 +426,79 @@ viewDeck cards deck =
             el [] <| text err
 
         Success d ->
-            column [] <|
+            column [ padding 10, spacing 0, Font.size 16, width <| px 240 ] <|
                 List.map
                     (\( maybeCard, qty ) ->
                         case maybeCard of
                             Nothing ->
                                 text "?"
 
-                            Just { name } ->
-                                row [] [ text <| String.fromInt qty, text " x ", text name ]
+                            Just card ->
+                                viewDeckCard card qty
                     )
                 <|
                     List.map
                         (Tuple.mapFirst <| \dbfId -> Dict.get dbfId (RemoteData.withDefault Dict.empty cards))
                     <|
                         d.cards
+
+
+imageUrlForId : CardId -> String
+imageUrlForId id =
+    "/images/tiles/" ++ id ++ ".png"
+
+
+manaCrystal : String
+manaCrystal =
+    "/images/mana_crystal.png"
+
+
+viewDeckCard : Card -> Int -> Element msg
+viewDeckCard { name, cost, id } qty =
+    row
+        [ width fill
+        , Font.color <| rgb255 255 255 255
+        , height <| px 30
+        , Background.image <| imageUrlForId id
+        ]
+        [ el
+            [ width <| px 25
+            , Background.color <| rgb255 22 26 58
+            , htmlAttribute <| HA.style "background-image" <| "url(" ++ manaCrystal ++ ")"
+            , htmlAttribute <| HA.style "background-size" "25px 22.5px"
+            , htmlAttribute <| HA.style "background-repeat" "no-repeat"
+            , htmlAttribute <| HA.style "background-position" "right top 3px"
+            , height fill
+            ]
+          <|
+            el [ centerY, centerX ] <|
+                text <|
+                    Maybe.withDefault "" <|
+                        Maybe.map String.fromInt <|
+                            cost
+        , el
+            [ width <| fill
+            , height fill
+            , htmlAttribute <| HA.style "background" "linear-gradient(45deg, rgba(22,26,58,1) 0%,rgba(15,18,41,1) 30%,rgba(0,0,0,0) 100%)"
+            ]
+          <|
+            el
+                [ width fill
+                , Font.center
+                , centerY
+                ]
+            <|
+                text name
+        , el
+            [ width <| px 15
+            , Background.color <| rgb255 22 26 58
+            , height fill
+            ]
+          <|
+            el [ centerY, centerX ] <|
+                text <|
+                    String.fromInt qty
+        ]
 
 
 port decodeDeck : String -> Cmd msg
