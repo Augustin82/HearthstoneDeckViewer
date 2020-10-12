@@ -187,6 +187,7 @@ type Msg
     | GotCards (WebData Cards)
     | AddDecks
     | DecodedDeck (Result D.Error Deck)
+    | NoOp
 
 
 main : Program Flags Model Msg
@@ -230,6 +231,9 @@ fetchCards =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        NoOp ->
+            ( model, Cmd.none )
+
         UpdateInput string ->
             ( { model | pasted = string }, Cmd.none )
 
@@ -263,9 +267,13 @@ view { pasted, cards, decodedDeck } =
             column [ height fill, width fill ] <|
                 [ el
                     [ htmlAttribute <| HA.id "header-section"
-                    , height fill
                     , width fill
-                    , htmlAttribute <| HA.style "min-height" "100vh"
+                    , htmlAttribute <|
+                        if RemoteData.isSuccess decodedDeck then
+                            HA.class ""
+
+                        else
+                            HA.style "min-height" "100vh"
                     ]
                   <|
                     el
@@ -275,7 +283,7 @@ view { pasted, cards, decodedDeck } =
                         ]
                     <|
                         column
-                            [ centerY, width fill ]
+                            [ centerY, width fill, spacing 10 ]
                             [ el
                                 [ Region.heading 1
                                 , padding 50
@@ -285,16 +293,22 @@ view { pasted, cards, decodedDeck } =
                                 ]
                               <|
                                 text "Hearthstone Deck Viewer"
-                            , row [ width fill ]
+                            , row [ width fill, Font.size 16 ]
                                 [ el [ width <| fillPortion 1 ] <| none
                                 , column [ width <| fillPortion 8, htmlAttribute <| HA.style "max-width" "800px", spacing 10 ]
-                                    [ row [ width fill, Font.color <| rgb255 0xF8 0xF9 0xFA ]
+                                    [ row
+                                        [ width fill
+
+                                        -- , Font.color <| rgb255 0xF8 0xF9 0xFA
+                                        , Font.color <| rgb255 0x49 0x50 0x57
+                                        ]
                                         [ Input.text
                                             [ htmlAttribute <| HA.id "deckstring"
                                             , htmlAttribute <| HA.name "deckstring"
                                             , height fill
                                             , width fill
                                             , Border.roundEach <| { topLeft = 5, topRight = 0, bottomLeft = 5, bottomRight = 0 }
+                                            , Input.focusedOnLoad
                                             ]
                                             { placeholder =
                                                 Just <|
@@ -319,47 +333,81 @@ view { pasted, cards, decodedDeck } =
                                         ]
                                     , el [ Font.size 13, Font.color <| rgb255 0x6C 0x75 0x7D, centerX ] <|
                                         text "Separate multiple deck codes with whitespace or commas. Individual deck strings copied from the game client are also supported."
+                                    , if not <| RemoteData.isSuccess decodedDeck then
+                                        none
+
+                                      else
+                                        row
+                                            [ htmlAttribute <| HA.id "shortURLForm"
+                                            , centerX
+                                            , padding 5
+                                            ]
+                                            [ Input.button
+                                                [ htmlAttribute <| HA.id "urlButton"
+                                                , Font.color <| rgb255 255 255 255
+                                                , Border.widthEach { top = 1, right = 0, bottom = 1, left = 1 }
+                                                , Border.color <| rgb255 255 255 255
+                                                , height fill
+                                                , paddingXY 12 6
+                                                , Border.roundEach <| { topLeft = 5, topRight = 0, bottomLeft = 5, bottomRight = 0 }
+                                                ]
+                                                { onPress = Nothing
+                                                , label = text "Generate Short URL"
+                                                }
+                                            , Input.text
+                                                [ htmlAttribute <|
+                                                    HA.id "urlInput"
+                                                , htmlAttribute <| HA.name "url"
+                                                , Border.rounded 0
+                                                ]
+                                                { onChange = always NoOp
+                                                , placeholder = Nothing
+                                                , label = Input.labelHidden ""
+                                                , text = ""
+                                                }
+                                            , Input.button
+                                                [ htmlAttribute <| HA.id "copyButton"
+                                                , Font.color <| rgb255 255 255 255
+                                                , Border.widthEach { top = 1, right = 1, bottom = 1, left = 0 }
+                                                , Border.color <| rgb255 255 255 255
+                                                , height fill
+                                                , paddingXY 12 6
+                                                , Border.roundEach <| { topLeft = 0, topRight = 5, bottomLeft = 0, bottomRight = 5 }
+                                                ]
+                                                { onPress = Nothing
+                                                , label = image [ htmlAttribute <| HA.class "clippy", width <| px 13 ] { src = "images/clippy.svg", description = "Copy to clipboard" }
+                                                }
+                                            ]
+                                    , if not <| RemoteData.isSuccess decodedDeck then
+                                        none
+
+                                      else
+                                        Input.button
+                                            [ htmlAttribute <| HA.id "removeButton"
+                                            , Font.color <| rgb255 255 255 255
+                                            , Border.width 1
+                                            , Border.color <| rgb255 255 255 255
+                                            , height <| px 42
+                                            , paddingXY 12 6
+                                            , Border.rounded 5
+                                            , centerX
+                                            ]
+                                            { onPress = Nothing
+                                            , label = text "Remove All Decks"
+                                            }
                                     ]
                                 , el [ width <| fillPortion 1 ] <| none
                                 ]
-                            , viewDeck cards decodedDeck
-
-                            -- , row [ htmlAttribute <| id "shortURLForm" ]
-                            --     [ Input.button
-                            --         [ htmlAttribute <| id "urlButton"
-                            --         , htmlAttribute <| class "btn btn-outline-light"
-                            --         ]
-                            --         { onPress = Nothing
-                            --         , label = text "Generate Short URL"
-                            --         }
-                            --     , Input.text
-                            --         [ htmlAttribute <|
-                            --             id "urlInput"
-                            --         , htmlAttribute <| name "url"
-                            --         ]
-                            --         { onChange = always NoOp
-                            --         , placeholder = Nothing
-                            --         , label = Input.labelHidden ""
-                            --         , text = ""
-                            --         }
-                            --     , Input.button
-                            --         [ htmlAttribute <| id "copyButton"
-                            --         , htmlAttribute <| class "btn btn-outline-light"
-                            --         ]
-                            --         { onPress = Nothing
-                            --         , label = image [ htmlAttribute <| class "clippy" ] { src = "images/clippy.svg", description = "Copy to clipboard" }
-                            --         }
-                            --     ]
-                            -- , Input.button
-                            --     [ htmlAttribute <| id "removeButton"
-                            --     , htmlAttribute <| class "btn btn-outline-light"
-                            --     ]
-                            --     { onPress = Nothing
-                            --     , label = text "Remove All Decks"
-                            --     }
                             ]
-                , el [ htmlAttribute <| HA.id "decks" ] <|
-                    none
+                , el
+                    [ htmlAttribute <| HA.id "decks"
+                    , Background.color <| rgb255 255 255 255
+                    , width fill
+                    , height fill
+                    ]
+                  <|
+                    el [ centerX ] <|
+                        viewDeck cards decodedDeck
                 ]
         ]
     }
