@@ -429,7 +429,7 @@ view { pasted, cards, decodedDeck } =
     }
 
 
-viewDeck : WebData Cards -> RemoteData String Deck -> Element msg
+viewDeck : WebData Cards -> RemoteData String Deck -> Element Msg
 viewDeck cards deck =
     case deck of
         NotAsked ->
@@ -442,24 +442,52 @@ viewDeck cards deck =
             el [] <| text err
 
         Success d ->
-            column []
-                [ deckTitle d
-                , deckCards cards d
-                , deckButtons
-                ]
+            el [ padding 10 ] <|
+                column [ spacing 0, Font.size 16, width <| px 240 ]
+                    [ deckTitle cards d
+                    , deckCards cards d
+                    , deckButtons
+                    ]
 
 
-deckTitle : Deck -> Element msg
-deckTitle deck =
-    deck.heroes
-        |> List.head
-        |> Maybe.map (\int -> el [ Background.image <| imageUrlForHero int ] <| none)
+deckTitle : WebData Cards -> Deck -> Element msg
+deckTitle cards deck =
+    let
+        hero =
+            deck.heroes
+                |> List.head
+
+        cardClass =
+            case hero of
+                Just h ->
+                    Dict.get h <|
+                        RemoteData.withDefault Dict.empty cards
+
+                Nothing ->
+                    Nothing
+    in
+    hero
+        |> Maybe.map
+            (\int ->
+                el
+                    [ width fill
+                    , Border.roundEach { topLeft = 5, topRight = 5, bottomLeft = 0, bottomRight = 0 }
+                    , htmlAttribute <| HA.style "background-image" <| "url(" ++ imageUrlForHero cards int ++ ")"
+                    , htmlAttribute <| HA.style "background-position" "right bottom 90px"
+                    ]
+                <|
+                    el [ centerX, centerY, Font.size 20, padding 21, Font.glow (rgb 0 0 0) 1, Font.color <| rgb 1 1 1 ] <|
+                        text <|
+                            Maybe.withDefault "UNKNOWN" <|
+                                Maybe.map .class <|
+                                    cardClass
+            )
         |> Maybe.withDefault none
 
 
 deckCards : WebData Cards -> Deck -> Element msg
 deckCards cards deck =
-    column [ padding 10, spacing 0, Font.size 16, width <| px 240 ] <|
+    column [ width fill ] <|
         List.map
             (\( maybeCard, qty ) ->
                 case maybeCard of
@@ -477,9 +505,40 @@ deckCards cards deck =
                     deck.cards
 
 
-deckButtons : Element msg
+deckButtons : Element Msg
 deckButtons =
-    none
+    column
+        [ width fill
+        , Border.roundEach { topLeft = 0, topRight = 0, bottomLeft = 5, bottomRight = 5 }
+        , Border.width 1
+        , Border.color <| rgb 0 0 0
+        , padding 10
+        ]
+        [ Input.button
+            [ htmlAttribute <| HA.id "copyDeck"
+            , Font.color <| rgb255 255 255 255
+            , Border.widthEach { top = 1, right = 1, bottom = 1, left = 0 }
+            , Border.color <| rgb255 255 255 255
+            , height fill
+            , paddingXY 12 6
+            , Border.roundEach <| { topLeft = 0, topRight = 5, bottomLeft = 0, bottomRight = 5 }
+            ]
+            { onPress = Just AddDecks
+            , label = text "Add Deck(s)"
+            }
+        , Input.button
+            [ htmlAttribute <| HA.id "addButton"
+            , Font.color <| rgb255 255 255 255
+            , Border.widthEach { top = 1, right = 1, bottom = 1, left = 0 }
+            , Border.color <| rgb255 255 255 255
+            , height fill
+            , paddingXY 12 6
+            , Border.roundEach <| { topLeft = 0, topRight = 5, bottomLeft = 0, bottomRight = 5 }
+            ]
+            { onPress = Just AddDecks
+            , label = text "Add Deck(s)"
+            }
+        ]
 
 
 imageUrlForId : CardId -> String
@@ -487,9 +546,15 @@ imageUrlForId id =
     "/images/tiles/" ++ id ++ ".png"
 
 
-imageUrlForHero : Int -> String
-imageUrlForHero id =
-    "/images/heroes/HERO_" ++ (String.padLeft 2 '0' <| String.fromInt <| id) ++ ".png"
+imageUrlForHero : WebData Cards -> Int -> String
+imageUrlForHero cards dbfId =
+    let
+        id =
+            Dict.get dbfId (RemoteData.withDefault Dict.empty cards)
+                |> Maybe.map .id
+                |> Maybe.withDefault ""
+    in
+    "/images/heroes/" ++ id ++ ".jpg"
 
 
 manaCrystal : String
@@ -521,7 +586,7 @@ viewDeckCard { name, cost, id } qty =
                         Maybe.map String.fromInt <|
                             cost
         , el
-            [ width <| fill
+            [ width fill
             , height fill
             , htmlAttribute <| HA.style "background" "linear-gradient(45deg, rgba(22,26,58,1) 0%,rgba(15,18,41,1) 30%,rgba(0,0,0,0) 100%)"
             ]
@@ -530,6 +595,7 @@ viewDeckCard { name, cost, id } qty =
                 [ width fill
                 , Font.center
                 , centerY
+                , Font.glow (rgb 0 0 0) 1
                 ]
             <|
                 text name
