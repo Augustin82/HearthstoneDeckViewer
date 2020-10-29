@@ -1,6 +1,7 @@
 port module Main exposing (main)
 
 import Browser
+import Browser.Navigation as Navigation
 import Dict
 import Element exposing (..)
 import Element.Background as Background
@@ -8,43 +9,13 @@ import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import Element.Region as Region
+import Html
 import Html.Attributes as HA
 import Http
 import Json.Decode as D
 import RemoteData exposing (RemoteData(..), WebData)
-
-
-
--- import Url
--- node "!DOCTYPE" [ attribute "html" "" ]
---     [ node "html" []
---         [ node "head" []
---             [ node "title" []
---                 [ text "Hearthstone Deck Viewer" ]
---             , node "meta" [ content "A simple tool for viewing and sharing Hearthstone decks and deck lineups.", name "description" ]
---                 []
---             , node "meta" [ content "Hearthstone,deck,deckstring,decklist", name "keywords" ]
---                 []
---             , node "meta" [ charset "utf-8" ]
---                 []
---             , node "meta" [ content "width=device-width, initial-scale=1, shrink-to-fit=no", name "viewport" ]
---                 []
---             , node "link" [ attribute "crossorigin" "anonymous", href "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css", attribute "integrity" "sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm", rel "stylesheet" ]
---                 []
---             , node "link" [ href "css/styles.css", rel "stylesheet" ]
---                 []
---             , node "script" [ src "https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.0/clipboard.min.js" ]
---                 []
---             , node "script" [ attribute "crossorigin" "anonymous", attribute "integrity" "sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=", src "https://code.jquery.com/jquery-3.3.1.min.js" ]
---                 []
---             , node "script" [ attribute "crossorigin" "anonymous", attribute "integrity" "sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q", src "https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" ]
---                 []
---             , node "script" [ attribute "crossorigin" "anonymous", attribute "integrity" "sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl", src "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" ]
---                 []
---             , node "script" [ src "js/bundle.js" ]
---                 []
---             ]
---         , body []
+import Url
+import Url.Builder
 
 
 type alias Flags =
@@ -54,7 +25,8 @@ type alias Flags =
 type alias Model =
     { pasted : String
     , cards : WebData Cards
-    , decodedDeck : RemoteData String Deck
+    , decodedDeck : Dict.Dict String (RemoteData String Deck)
+    , key : Navigation.Key
     }
 
 
@@ -152,12 +124,18 @@ type alias Deck =
     }
 
 
-deckDecoder : D.Decoder Deck
+deckDecoder : D.Decoder ( String, Deck )
 deckDecoder =
-    D.succeed Deck
-        |> andMap (D.field "cards" (D.list deckCardsDecoder))
-        |> andMap (D.field "format" D.int)
-        |> andMap (D.field "heroes" (D.list D.int))
+    D.succeed Tuple.pair
+        |> andMap (D.field "deckstring" D.string)
+        |> andMap
+            (D.field "deck" <|
+                (D.succeed Deck
+                    |> andMap (D.field "cards" (D.list deckCardsDecoder))
+                    |> andMap (D.field "format" D.int)
+                    |> andMap (D.field "heroes" (D.list D.int))
+                )
+            )
 
 
 deckCardsDecoder : D.Decoder ( Int, Int )
@@ -186,30 +164,34 @@ type Msg
     = UpdateInput String
     | GotCards (WebData Cards)
     | AddDecks
-    | DecodedDeck (Result D.Error Deck)
+    | DecodedDeck String (Result String Deck)
+    | ClickedLink Browser.UrlRequest
     | NoOp
 
 
 main : Program Flags Model Msg
 main =
-    Browser.document
+    Browser.application
         { init = init
         , view = view
         , update = update
         , subscriptions = subscriptions
+        , onUrlRequest = \_ -> NoOp
+        , onUrlChange = \_ -> NoOp
         }
 
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    deckDecoded (D.decodeValue deckDecoder >> DecodedDeck)
+    deckDecoded (D.decodeValue deckDecoder >> Result.map (\( deckstring, deck ) -> DecodedDeck deckstring <| Ok deck) >> Result.withDefault NoOp)
 
 
-init : Flags -> ( Model, Cmd Msg )
-init _ =
+init : Flags -> Url.Url -> Navigation.Key -> ( Model, Cmd Msg )
+init _ url key =
     ( { pasted = ""
       , cards = NotAsked
-      , decodedDeck = NotAsked
+      , decodedDeck = Dict.empty
+      , key = key
       }
     , fetchCards
     )
@@ -234,18 +216,46 @@ update msg model =
         NoOp ->
             ( model, Cmd.none )
 
+        ClickedLink urlRequest ->
+            case urlRequest of
+                Browser.Internal url ->
+                    ( model
+                    , Navigation.pushUrl model.key (Url.toString url)
+                    )
+
+                Browser.External url ->
+                    ( model
+                    , Navigation.load url
+                    )
+
         UpdateInput string ->
             ( { model | pasted = string }, Cmd.none )
 
         AddDecks ->
-            ( model, decodeDeck model.pasted )
+            ( { model
+                | pasted = ""
+                , decodedDeck = model.decodedDeck |> Dict.insert model.pasted Loading
+              }
+            , Cmd.batch
+                [ decodeDeck model.pasted
+                , Navigation.pushUrl model.key <|
+                    Url.Builder.relative [] <|
+                        List.map (Url.Builder.string "deckstring") <|
+                            String.split "," <|
+                                String.replace " " "," <|
+                                    model.pasted
+                ]
+            )
 
-        DecodedDeck deck ->
+        DecodedDeck deckstring deck ->
             ( { model
                 | decodedDeck =
-                    deck
-                        |> RemoteData.fromResult
-                        |> RemoteData.mapError (\_ -> "Decoding error")
+                    model.decodedDeck
+                        |> Dict.insert deckstring
+                            (deck
+                                |> RemoteData.fromResult
+                                |> RemoteData.mapError (\_ -> "Decoding error")
+                            )
               }
             , Cmd.none
             )
@@ -258,7 +268,8 @@ view : Model -> Browser.Document Msg
 view { pasted, cards, decodedDeck } =
     { title = "Elm version of HS Deck Viewer"
     , body =
-        [ layout
+        [ Html.node "style" [] [ Html.text "*:focus { outline: none !important; box-shadow: none !important;  }" ]
+        , layout
             [ height fill
             , width fill
             , Background.color <| rgb255 22 26 58
@@ -269,7 +280,7 @@ view { pasted, cards, decodedDeck } =
                     [ htmlAttribute <| HA.id "header-section"
                     , width fill
                     , htmlAttribute <|
-                        if RemoteData.isSuccess decodedDeck then
+                        if List.any RemoteData.isSuccess <| Dict.values decodedDeck then
                             HA.class ""
 
                         else
@@ -333,7 +344,7 @@ view { pasted, cards, decodedDeck } =
                                         ]
                                     , el [ Font.size 13, Font.color <| rgb255 0x6C 0x75 0x7D, centerX ] <|
                                         text "Separate multiple deck codes with whitespace or commas. Individual deck strings copied from the game client are also supported."
-                                    , if not <| RemoteData.isSuccess decodedDeck then
+                                    , if not <| List.any RemoteData.isSuccess <| Dict.values decodedDeck then
                                         none
 
                                       else
@@ -378,7 +389,7 @@ view { pasted, cards, decodedDeck } =
                                                 , label = image [ htmlAttribute <| HA.class "clippy", width <| px 13 ] { src = "images/clippy.svg", description = "Copy to clipboard" }
                                                 }
                                             ]
-                                    , if not <| RemoteData.isSuccess decodedDeck then
+                                    , if not <| List.any RemoteData.isSuccess <| Dict.values decodedDeck then
                                         none
 
                                       else
@@ -399,15 +410,20 @@ view { pasted, cards, decodedDeck } =
                                 , el [ width <| fillPortion 1 ] <| none
                                 ]
                             ]
-                , el
+                , row
                     [ htmlAttribute <| HA.id "decks"
                     , Background.color <| rgb255 255 255 255
                     , width fill
                     , height fill
                     ]
                   <|
-                    el [ centerX ] <|
-                        viewDeck cards decodedDeck
+                    List.map
+                        (\deck ->
+                            el [ centerX ] <|
+                                viewDeck cards deck
+                        )
+                    <|
+                        Dict.values decodedDeck
                 ]
         ]
     }
