@@ -453,10 +453,11 @@ viewDeck cards deck =
                                 viewDeckCard card qty
                     )
                 <|
-                    List.map
-                        (Tuple.mapFirst <| \dbfId -> Dict.get dbfId (RemoteData.withDefault Dict.empty cards))
-                    <|
-                        d.cards
+                    List.sortBy (Tuple.first >> Maybe.andThen .cost >> Maybe.withDefault 0) <|
+                        List.map
+                            (Tuple.mapFirst <| \dbfId -> Dict.get dbfId (RemoteData.withDefault Dict.empty cards))
+                        <|
+                            d.cards
 
 
 imageUrlForId : CardId -> String
