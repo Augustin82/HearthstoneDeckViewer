@@ -442,27 +442,54 @@ viewDeck cards deck =
             el [] <| text err
 
         Success d ->
-            column [ padding 10, spacing 0, Font.size 16, width <| px 240 ] <|
-                List.map
-                    (\( maybeCard, qty ) ->
-                        case maybeCard of
-                            Nothing ->
-                                text "?"
+            column []
+                [ deckTitle d
+                , deckCards cards d
+                , deckButtons
+                ]
 
-                            Just card ->
-                                viewDeckCard card qty
-                    )
+
+deckTitle : Deck -> Element msg
+deckTitle deck =
+    deck.heroes
+        |> List.head
+        |> Maybe.map (\int -> el [ Background.image <| imageUrlForHero int ] <| none)
+        |> Maybe.withDefault none
+
+
+deckCards : WebData Cards -> Deck -> Element msg
+deckCards cards deck =
+    column [ padding 10, spacing 0, Font.size 16, width <| px 240 ] <|
+        List.map
+            (\( maybeCard, qty ) ->
+                case maybeCard of
+                    Nothing ->
+                        text "?"
+
+                    Just card ->
+                        viewDeckCard card qty
+            )
+        <|
+            List.sortBy (Tuple.first >> Maybe.andThen .cost >> Maybe.withDefault 0) <|
+                List.map
+                    (Tuple.mapFirst <| \dbfId -> Dict.get dbfId (RemoteData.withDefault Dict.empty cards))
                 <|
-                    List.sortBy (Tuple.first >> Maybe.andThen .cost >> Maybe.withDefault 0) <|
-                        List.map
-                            (Tuple.mapFirst <| \dbfId -> Dict.get dbfId (RemoteData.withDefault Dict.empty cards))
-                        <|
-                            d.cards
+                    deck.cards
+
+
+deckButtons : Element msg
+deckButtons =
+    none
 
 
 imageUrlForId : CardId -> String
 imageUrlForId id =
     "/images/tiles/" ++ id ++ ".png"
+
+
+imageUrlForHero : Int -> String
+imageUrlForHero id =
+    "/images/heroes/HERO_" ++ (String.padLeft 2 '0' <| String.fromInt <| id) ++ ".png"
 
 
 manaCrystal : String
