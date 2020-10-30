@@ -166,6 +166,8 @@ type Msg
     | AddDecks
     | DecodedDeck String (Result String Deck)
     | ClickedLink Browser.UrlRequest
+    | CopyDeckCode Deck
+    | RemoveDeck Deck
     | NoOp
 
 
@@ -214,6 +216,12 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         NoOp ->
+            ( model, Cmd.none )
+
+        CopyDeckCode deck ->
+            ( model, Cmd.none )
+
+        RemoveDeck deck ->
             ( model, Cmd.none )
 
         ClickedLink urlRequest ->
@@ -446,7 +454,7 @@ viewDeck cards deck =
                 column [ spacing 0, Font.size 16, width <| px 240 ]
                     [ deckTitle cards d
                     , deckCards cards d
-                    , deckButtons
+                    , deckButtons d
                     ]
 
 
@@ -505,8 +513,8 @@ deckCards cards deck =
                     deck.cards
 
 
-deckButtons : Element Msg
-deckButtons =
+deckButtons : Deck -> Element Msg
+deckButtons deck =
     column
         [ width fill
         , Border.roundEach { topLeft = 0, topRight = 0, bottomLeft = 5, bottomRight = 5 }
@@ -515,28 +523,30 @@ deckButtons =
         , padding 10
         ]
         [ Input.button
-            [ htmlAttribute <| HA.id "copyDeck"
-            , Font.color <| rgb255 255 255 255
-            , Border.widthEach { top = 1, right = 1, bottom = 1, left = 0 }
-            , Border.color <| rgb255 255 255 255
+            [ htmlAttribute <| HA.id "copyDeckCode"
+            , Font.color <| rgb 0 0 0
+            , Border.width 1
+            , Border.color <| rgb 0 0 0
             , height fill
+            , width fill
             , paddingXY 12 6
             , Border.roundEach <| { topLeft = 0, topRight = 5, bottomLeft = 0, bottomRight = 5 }
             ]
-            { onPress = Just AddDecks
-            , label = text "Add Deck(s)"
+            { onPress = Just CopyDeckCode
+            , label = text "Copy Deck Code"
             }
         , Input.button
-            [ htmlAttribute <| HA.id "addButton"
-            , Font.color <| rgb255 255 255 255
-            , Border.widthEach { top = 1, right = 1, bottom = 1, left = 0 }
-            , Border.color <| rgb255 255 255 255
+            [ htmlAttribute <| HA.id "removeDeck"
+            , Font.color <| rgb 0 0 0
+            , Border.width 1
+            , Border.color <| rgb 0 0 0
             , height fill
+            , width fill
             , paddingXY 12 6
             , Border.roundEach <| { topLeft = 0, topRight = 5, bottomLeft = 0, bottomRight = 5 }
             ]
-            { onPress = Just AddDecks
-            , label = text "Add Deck(s)"
+            { onPress = Just <| RemoveDeck deck
+            , label = text "Remove Deck"
             }
         ]
 
