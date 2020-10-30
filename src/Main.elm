@@ -16,6 +16,8 @@ import Json.Decode as D
 import RemoteData exposing (RemoteData(..), WebData)
 import Url
 import Url.Builder
+import Url.Parser
+import Url.Parser.Query
 
 
 type alias Flags =
@@ -25,7 +27,8 @@ type alias Flags =
 type alias Model =
     { pasted : String
     , cards : WebData Cards
-    , decodedDeck : Dict.Dict String (RemoteData String Deck)
+    , decodedDecks : Dict.Dict String (RemoteData String Deck)
+    , queuedDecks : Dict.Dict String (RemoteData String Deck)
     , key : Navigation.Key
     }
 
@@ -190,13 +193,29 @@ subscriptions _ =
 
 init : Flags -> Url.Url -> Navigation.Key -> ( Model, Cmd Msg )
 init _ url key =
+    let
+        deckstringsFromUrl =
+            url
+                |> Url.Parser.parse (Url.Parser.query parseDeckstrings)
+                |> Maybe.withDefault []
+    in
     ( { pasted = ""
       , cards = NotAsked
-      , decodedDeck = Dict.empty
+      , decodedDecks = Dict.empty
+      , queuedDecks = deckstringsFromUrl |> List.map (\d -> ( d, Loading )) |> Dict.fromList
       , key = key
       }
     , fetchCards
     )
+
+
+
+-- parseDeckstrings : Url.Parser.Parser (List String)
+
+
+parseDeckstrings : Url.Parser.Query.Parser (List String)
+parseDeckstrings =
+    Url.Parser.Query.custom "deckstring" identity
 
 
 hearthstoneAPICardsURl : String
@@ -210,6 +229,16 @@ fetchCards =
         { url = hearthstoneAPICardsURl
         , expect = Http.expectJson (RemoteData.fromResult >> GotCards) cardsDecoder
         }
+
+
+requestDecodedDeck : String -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+requestDecodedDeck code ( m, c ) =
+    ( { m | decodedDecks = m.decodedDecks |> Dict.insert code Loading }
+    , Cmd.batch
+        [ c
+        , decodeDeck code
+        ]
+    )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -240,25 +269,26 @@ update msg model =
             ( { model | pasted = string }, Cmd.none )
 
         AddDecks ->
+            let
+                deckcode =
+                    model.pasted
+            in
             ( { model
                 | pasted = ""
-                , decodedDeck = model.decodedDeck |> Dict.insert model.pasted Loading
               }
-            , Cmd.batch
-                [ decodeDeck model.pasted
-                , Navigation.pushUrl model.key <|
-                    Url.Builder.relative [] <|
-                        List.map (Url.Builder.string "deckstring") <|
-                            String.split "," <|
-                                String.replace " " "," <|
-                                    model.pasted
-                ]
+            , Navigation.pushUrl model.key <|
+                Url.Builder.relative [] <|
+                    List.map (Url.Builder.string "deckstring") <|
+                        String.split "," <|
+                            String.replace " " "," <|
+                                model.pasted
             )
+                |> requestDecodedDeck deckcode
 
         DecodedDeck deckstring deck ->
             ( { model
-                | decodedDeck =
-                    model.decodedDeck
+                | decodedDecks =
+                    model.decodedDecks
                         |> Dict.insert deckstring
                             (deck
                                 |> RemoteData.fromResult
@@ -269,11 +299,12 @@ update msg model =
             )
 
         GotCards result ->
-            ( { model | cards = result }, Cmd.none )
+            model.queuedDecks
+                |> Dict.foldl (\code _ ( m, c ) -> ( m, c ) |> requestDecodedDeck code) ( { model | cards = result, queuedDecks = Dict.empty }, Cmd.none )
 
 
 view : Model -> Browser.Document Msg
-view { pasted, cards, decodedDeck } =
+view { pasted, cards, decodedDecks } =
     { title = "Elm version of HS Deck Viewer"
     , body =
         [ Html.node "style" [] [ Html.text "*:focus { outline: none !important; box-shadow: none !important;  }" ]
@@ -288,7 +319,7 @@ view { pasted, cards, decodedDeck } =
                     [ htmlAttribute <| HA.id "header-section"
                     , width fill
                     , htmlAttribute <|
-                        if List.any RemoteData.isSuccess <| Dict.values decodedDeck then
+                        if List.any RemoteData.isSuccess <| Dict.values decodedDecks then
                             HA.class ""
 
                         else
@@ -352,7 +383,7 @@ view { pasted, cards, decodedDeck } =
                                         ]
                                     , el [ Font.size 13, Font.color <| rgb255 0x6C 0x75 0x7D, centerX ] <|
                                         text "Separate multiple deck codes with whitespace or commas. Individual deck strings copied from the game client are also supported."
-                                    , if not <| List.any RemoteData.isSuccess <| Dict.values decodedDeck then
+                                    , if not <| List.any RemoteData.isSuccess <| Dict.values decodedDecks then
                                         none
 
                                       else
@@ -397,7 +428,7 @@ view { pasted, cards, decodedDeck } =
                                                 , label = image [ htmlAttribute <| HA.class "clippy", width <| px 13 ] { src = "images/clippy.svg", description = "Copy to clipboard" }
                                                 }
                                             ]
-                                    , if not <| List.any RemoteData.isSuccess <| Dict.values decodedDeck then
+                                    , if not <| List.any RemoteData.isSuccess <| Dict.values decodedDecks then
                                         none
 
                                       else
@@ -431,7 +462,7 @@ view { pasted, cards, decodedDeck } =
                                 viewDeck cards deck
                         )
                     <|
-                        Dict.values decodedDeck
+                        Dict.values decodedDecks
                 ]
         ]
     }
