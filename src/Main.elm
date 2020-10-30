@@ -496,21 +496,33 @@ deckTitle cards deck =
 deckCards : WebData Cards -> Deck -> Element msg
 deckCards cards deck =
     column [ width fill ] <|
-        List.map
-            (\( maybeCard, qty ) ->
-                case maybeCard of
-                    Nothing ->
-                        text "?"
-
-                    Just card ->
-                        viewDeckCard card qty
-            )
-        <|
-            List.sortBy (Tuple.first >> Maybe.andThen .cost >> Maybe.withDefault 0) <|
-                List.map
-                    (Tuple.mapFirst <| \dbfId -> Dict.get dbfId (RemoteData.withDefault Dict.empty cards))
+        List.map (\( card, qty ) -> viewDeckCard card qty) <|
+            List.sortWith (\( c1, _ ) ( c2, _ ) -> manaCostAndThenName c1 c2) <|
+                List.filterMap
+                    (\( dbfId, qty ) ->
+                        cards
+                            |> RemoteData.withDefault Dict.empty
+                            |> Dict.get dbfId
+                            |> Maybe.map (\c -> ( c, qty ))
+                    )
                 <|
                     deck.cards
+
+
+manaCostAndThenName : Card -> Card -> Order
+manaCostAndThenName c1 c2 =
+    let
+        cost1 =
+            c1.cost |> Maybe.withDefault 0
+
+        cost2 =
+            c2.cost |> Maybe.withDefault 0
+    in
+    if cost1 == cost2 then
+        compare c1.name c2.name
+
+    else
+        compare cost1 cost2
 
 
 deckButtons : Deck -> Element Msg
@@ -521,6 +533,7 @@ deckButtons deck =
         , Border.width 1
         , Border.color <| rgb 0 0 0
         , padding 10
+        , spacing 10
         ]
         [ Input.button
             [ htmlAttribute <| HA.id "copyDeckCode"
@@ -530,9 +543,11 @@ deckButtons deck =
             , height fill
             , width fill
             , paddingXY 12 6
-            , Border.roundEach <| { topLeft = 0, topRight = 5, bottomLeft = 0, bottomRight = 5 }
+            , Border.rounded 3
+            , Font.center
+            , Font.size 14
             ]
-            { onPress = Just CopyDeckCode
+            { onPress = Just <| CopyDeckCode deck
             , label = text "Copy Deck Code"
             }
         , Input.button
@@ -543,7 +558,9 @@ deckButtons deck =
             , height fill
             , width fill
             , paddingXY 12 6
-            , Border.roundEach <| { topLeft = 0, topRight = 5, bottomLeft = 0, bottomRight = 5 }
+            , Border.rounded 3
+            , Font.center
+            , Font.size 14
             ]
             { onPress = Just <| RemoveDeck deck
             , label = text "Remove Deck"
@@ -590,7 +607,7 @@ viewDeckCard { name, cost, id } qty =
             , height fill
             ]
           <|
-            el [ centerY, centerX ] <|
+            el [ centerY, centerX, Font.glow (rgb 0 0 0) 1 ] <|
                 text <|
                     Maybe.withDefault "" <|
                         Maybe.map String.fromInt <|
