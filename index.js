@@ -28,3 +28,22 @@ app.ports.copyToClipboard.subscribe(function (textToCopy) {
         console.log("Copy failed");
     }
 });
+
+app.ports.fixTooltipPlacement.subscribe(function (id) {
+    requestAnimationFrame(function () {
+        const screenPadding = 16;
+        const tooltip = document.getElementById(id);
+        const rect = tooltip.getBoundingClientRect();
+
+        console.log(rect);
+        if (rect.x < 0) {
+            tooltip.style.transform = `translateX(${
+                -rect.x + screenPadding
+            }px)`;
+        } else if (rect.x + 450 > window.outerWidth) {
+            tooltip.style.transform = `translateX(${
+                window.outerWidth - rect.x - screenPadding
+            }px)`;
+        }
+    });
+});

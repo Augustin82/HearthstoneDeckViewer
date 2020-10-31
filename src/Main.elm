@@ -7,6 +7,7 @@ import Dict
 import Element exposing (..)
 import Element.Background as Background
 import Element.Border as Border
+import Element.Events as Events
 import Element.Font as Font
 import Element.Input as Input
 import Element.Region as Region
@@ -16,6 +17,7 @@ import Html.Events as HE
 import Http
 import Json.Decode as D
 import Json.Encode as Encode
+import OrderedDict exposing (OrderedDict)
 import RemoteData exposing (RemoteData(..), WebData)
 import Task
 import Url
@@ -31,10 +33,11 @@ type alias Flags =
 type alias Model =
     { pasted : String
     , cards : WebData Cards
-    , decodedDecks : Dict.Dict String (RemoteData String Deck)
-    , queuedDecks : Dict.Dict String (RemoteData String Deck)
+    , decodedDecks : OrderedDict String (RemoteData String Deck)
+    , queuedDecks : OrderedDict String (RemoteData String Deck)
     , currentUrl : String
     , shortUrl : String
+    , tooltip : Maybe Tooltip
     , key : Navigation.Key
     }
 
@@ -169,19 +172,33 @@ deckCardsDecoder =
             )
 
 
+type alias Deckstring =
+    String
+
+
+type alias HttpError =
+    String
+
+
+type alias Tooltip =
+    ( Deckstring, CardId )
+
+
 type Msg
     = UpdateInput String
     | GotCards (WebData Cards)
     | AddDecks
-    | DecodedDeck String (Result String Deck)
+    | DecodedDeck Deckstring (Result HttpError Deck)
     | ClickedLink Browser.UrlRequest
-    | CopyDeckCode String
-    | RemoveDeck String
+    | CopyDeckCode Deckstring
+    | RemoveDeck Deckstring
     | RemoveAllDecks
     | GenerateShortUrl
     | GotShortUrl String
     | CopyShortUrl
     | UrlChange Url.Url
+    | ShowTooltip Tooltip
+    | HideTooltip
     | NoOp
 
 
@@ -212,10 +229,11 @@ init _ url key =
     in
     ( { pasted = ""
       , cards = NotAsked
-      , decodedDecks = Dict.empty
-      , queuedDecks = deckstringsFromUrl |> List.map (\d -> ( d, Loading )) |> Dict.fromList
+      , decodedDecks = OrderedDict.empty
+      , queuedDecks = deckstringsFromUrl |> List.map (\d -> ( d, Loading )) |> Dict.fromList |> OrderedDict deckstringsFromUrl
       , currentUrl = Url.toString url
       , shortUrl = ""
+      , tooltip = Nothing
       , key = key
       }
     , fetchCards
@@ -246,7 +264,7 @@ fetchCards =
 
 requestDecodedDeck : String -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
 requestDecodedDeck code ( m, c ) =
-    ( { m | decodedDecks = m.decodedDecks |> Dict.insert code Loading, shortUrl = "" }
+    ( { m | decodedDecks = m.decodedDecks |> OrderedDict.insert code Loading, shortUrl = "" }
     , Cmd.batch
         [ c
         , decodeDeck code
@@ -259,6 +277,12 @@ update msg model =
     case msg of
         NoOp ->
             ( model, Cmd.none )
+
+        ShowTooltip tooltip ->
+            ( { model | tooltip = Just tooltip }, fixTooltipPlacement (Tuple.first tooltip ++ Tuple.second tooltip) )
+
+        HideTooltip ->
+            ( { model | tooltip = Nothing }, Cmd.none )
 
         UrlChange url ->
             ( { model | currentUrl = Url.toString url }, Cmd.none )
@@ -276,10 +300,10 @@ update msg model =
             ( model, copyToClipboard deckstring )
 
         RemoveDeck deckstring ->
-            ( { model | decodedDecks = Dict.remove deckstring model.decodedDecks, shortUrl = "" }, focusDeckInput )
+            ( { model | decodedDecks = OrderedDict.remove deckstring model.decodedDecks, shortUrl = "" }, focusDeckInput )
 
         RemoveAllDecks ->
-            ( { model | decodedDecks = Dict.empty, shortUrl = "" }, focusDeckInput )
+            ( { model | decodedDecks = OrderedDict.empty, shortUrl = "" }, focusDeckInput )
 
         ClickedLink urlRequest ->
             case urlRequest of
@@ -312,7 +336,7 @@ update msg model =
             let
                 newDecodedDecks =
                     model.decodedDecks
-                        |> Dict.insert deckstring
+                        |> OrderedDict.insert deckstring
                             (deck
                                 |> RemoteData.fromResult
                                 |> RemoteData.mapError (\_ -> "Decoding error")
@@ -325,20 +349,21 @@ update msg model =
             , Navigation.pushUrl model.key <|
                 Url.Builder.relative [] <|
                     List.map (Url.Builder.string "deckstring") <|
-                        Dict.keys newDecodedDecks
+                        .order <|
+                            newDecodedDecks
             )
 
         GotCards result ->
             model.queuedDecks
-                |> Dict.foldl (\code _ ( m, c ) -> ( m, c ) |> requestDecodedDeck code) ( { model | cards = result, queuedDecks = Dict.empty }, Cmd.none )
+                |> .dict
+                |> Dict.foldl (\code _ ( m, c ) -> ( m, c ) |> requestDecodedDeck code) ( { model | cards = result, queuedDecks = OrderedDict.empty }, Cmd.none )
 
 
 view : Model -> Browser.Document Msg
-view { pasted, cards, decodedDecks, shortUrl } =
+view { pasted, cards, decodedDecks, tooltip, shortUrl } =
     { title = "Elm version of HS Deck Viewer"
     , body =
-        [ Html.node "style" [] [ Html.text "*:focus { outline: none !important; box-shadow: none !important;  }" ]
-        , layout
+        [ layout
             [ height fill
             , width fill
             , Background.color <| rgb255 22 26 58
@@ -349,7 +374,7 @@ view { pasted, cards, decodedDecks, shortUrl } =
                     [ htmlAttribute <| HA.id "header-section"
                     , width fill
                     , htmlAttribute <|
-                        if List.any RemoteData.isSuccess <| Dict.values decodedDecks then
+                        if List.any RemoteData.isSuccess <| OrderedDict.orderedValues decodedDecks then
                             HA.class ""
 
                         else
@@ -414,7 +439,7 @@ view { pasted, cards, decodedDecks, shortUrl } =
                                         ]
                                     , el [ Font.size 13, Font.color <| rgb255 0x6C 0x75 0x7D, centerX ] <|
                                         text "Separate multiple deck codes with whitespace or commas. Individual deck strings copied from the game client are also supported."
-                                    , if not <| List.any RemoteData.isSuccess <| Dict.values decodedDecks then
+                                    , if not <| List.any RemoteData.isSuccess <| OrderedDict.orderedValues decodedDecks then
                                         none
 
                                       else
@@ -459,7 +484,7 @@ view { pasted, cards, decodedDecks, shortUrl } =
                                                 , label = image [ htmlAttribute <| HA.class "clippy", width <| px 13 ] { src = "images/clippy.svg", description = "Copy to clipboard" }
                                                 }
                                             ]
-                                    , if not <| List.any RemoteData.isSuccess <| Dict.values decodedDecks then
+                                    , if not <| List.any RemoteData.isSuccess <| OrderedDict.orderedValues decodedDecks then
                                         none
 
                                       else
@@ -487,15 +512,26 @@ view { pasted, cards, decodedDecks, shortUrl } =
                     , height fill
                     ]
                   <|
-                    List.map (el [ centerX ] << viewDeck cards) <|
-                        Dict.toList decodedDecks
+                    List.map (el [ centerX ] << viewDeck cards tooltip) <|
+                        (\decks ->
+                            decks.order
+                                |> List.filterMap
+                                    (\key ->
+                                        decks
+                                            |> .dict
+                                            |> Dict.get key
+                                            |> Maybe.map (Tuple.pair key)
+                                    )
+                        )
+                        <|
+                            decodedDecks
                 ]
         ]
     }
 
 
-viewDeck : WebData Cards -> ( String, RemoteData String Deck ) -> Element Msg
-viewDeck cards ( deckstring, deck ) =
+viewDeck : WebData Cards -> Maybe Tooltip -> ( String, RemoteData String Deck ) -> Element Msg
+viewDeck cards tooltip ( deckstring, deck ) =
     case deck of
         NotAsked ->
             none
@@ -507,10 +543,20 @@ viewDeck cards ( deckstring, deck ) =
             el [] <| text err
 
         Success d ->
-            el [ padding 10 ] <|
+            el
+                [ padding 10
+                , htmlAttribute <|
+                    HA.style "z-index" <|
+                        if tooltip |> Maybe.map Tuple.first |> Maybe.map ((==) deckstring) |> Maybe.withDefault False then
+                            "1000"
+
+                        else
+                            "900"
+                ]
+            <|
                 column [ spacing 0, Font.size 16, width <| px 240 ]
                     [ deckTitle cards d
-                    , deckCards cards d
+                    , deckCards cards tooltip deckstring d
                     , deckButtons deckstring
                     ]
 
@@ -550,10 +596,10 @@ deckTitle cards deck =
         |> Maybe.withDefault none
 
 
-deckCards : WebData Cards -> Deck -> Element msg
-deckCards cards deck =
+deckCards : WebData Cards -> Maybe Tooltip -> Deckstring -> Deck -> Element Msg
+deckCards cards tooltip deckstring deck =
     column [ width fill ] <|
-        List.map (\( card, qty ) -> viewDeckCard card qty) <|
+        List.map (\( card, qty ) -> viewDeckCard tooltip deckstring card qty) <|
             List.sortWith (\( c1, _ ) ( c2, _ ) -> manaCostAndThenName c1 c2) <|
                 List.filterMap
                     (\( dbfId, qty ) ->
@@ -625,9 +671,14 @@ deckButtons deckstring =
         ]
 
 
+tileUrlForId : CardId -> String
+tileUrlForId id =
+    "/images/tiles/" ++ id ++ ".png"
+
+
 imageUrlForId : CardId -> String
 imageUrlForId id =
-    "/images/tiles/" ++ id ++ ".png"
+    "/images/cards/" ++ id ++ ".png"
 
 
 imageUrlForHero : WebData Cards -> Int -> String
@@ -646,13 +697,56 @@ manaCrystal =
     "/images/mana_crystal.png"
 
 
-viewDeckCard : Card -> Int -> Element msg
-viewDeckCard { name, cost, id } qty =
+viewDeckCard : Maybe Tooltip -> Deckstring -> Card -> Int -> Element Msg
+viewDeckCard tooltip deckstring { name, cost, id } qty =
     row
         [ width fill
         , Font.color <| rgb255 255 255 255
         , height <| px 30
-        , Background.image <| imageUrlForId id
+        , Background.image <| tileUrlForId id
+        , Events.onMouseEnter <| ShowTooltip <| ( deckstring, id )
+
+        -- , Events.onMouseLeave <| HideTooltip
+        , onRight <|
+            case tooltip of
+                Nothing ->
+                    none
+
+                Just ( d, cId ) ->
+                    if d == deckstring && cId == id then
+                        row
+                            [ htmlAttribute <| HA.style "z-index" "1100"
+                            , htmlAttribute <| HA.id <| deckstring ++ id
+                            , moveUp 10
+                            ]
+                            [ el
+                                [ width <| px 0
+                                , height <| px 0
+                                , alignTop
+                                , Background.color <| rgba 1 1 1 0
+                                , htmlAttribute <| HA.style "border-top" "10px solid transparent"
+                                , htmlAttribute <| HA.style "border-bottom" "10px solid transparent"
+                                , htmlAttribute <| HA.style "border-right" "10px solid #161A3A"
+                                , moveDown 15
+                                ]
+                              <|
+                                text ""
+                            , el
+                                [ Background.color <| rgb255 22 26 58
+                                , Border.rounded 15
+                                , height fill
+                                , width <| px 300
+                                , height <| px 450
+                                ]
+                              <|
+                                image [ centerX, centerY ]
+                                    { src = imageUrlForId id
+                                    , description = name
+                                    }
+                            ]
+
+                    else
+                        none
         ]
         [ el
             [ width <| px 25
@@ -731,6 +825,9 @@ port decodeDeck : String -> Cmd msg
 
 
 port copyToClipboard : String -> Cmd msg
+
+
+port fixTooltipPlacement : String -> Cmd msg
 
 
 port deckDecoded : (D.Value -> msg) -> Sub msg
