@@ -15,6 +15,7 @@ import Html.Attributes as HA
 import Html.Events as HE
 import Http
 import Json.Decode as D
+import Json.Encode as Encode
 import RemoteData exposing (RemoteData(..), WebData)
 import Task
 import Url
@@ -32,6 +33,7 @@ type alias Model =
     , cards : WebData Cards
     , decodedDecks : Dict.Dict String (RemoteData String Deck)
     , queuedDecks : Dict.Dict String (RemoteData String Deck)
+    , shortUrl : String
     , key : Navigation.Key
     }
 
@@ -175,6 +177,9 @@ type Msg
     | CopyDeckCode String
     | RemoveDeck String
     | RemoveAllDecks
+    | GenerateShortUrl
+    | GotShortUrl String
+    | UrlChange Url.Url
     | NoOp
 
 
@@ -186,7 +191,7 @@ main =
         , update = update
         , subscriptions = subscriptions
         , onUrlRequest = \_ -> NoOp
-        , onUrlChange = \_ -> NoOp
+        , onUrlChange = UrlChange
         }
 
 
@@ -207,6 +212,7 @@ init _ url key =
       , cards = NotAsked
       , decodedDecks = Dict.empty
       , queuedDecks = deckstringsFromUrl |> List.map (\d -> ( d, Loading )) |> Dict.fromList
+      , shortUrl = ""
       , key = key
       }
     , fetchCards
@@ -250,6 +256,15 @@ update msg model =
     case msg of
         NoOp ->
             ( model, Cmd.none )
+
+        UrlChange url ->
+            ( { model | currentUrl = url.href }, Cmd.none )
+
+        GenerateShortUrl ->
+            ( model, getShortUrl )
+
+        GotShortUrl shortUrl ->
+            ( { model | shortUrl = shortUrl }, Cmd.none )
 
         CopyDeckCode deckstring ->
             ( model, copyToClipboard deckstring )
@@ -311,7 +326,7 @@ update msg model =
 
 
 view : Model -> Browser.Document Msg
-view { pasted, cards, decodedDecks } =
+view { pasted, cards, decodedDecks, shortUrl } =
     { title = "Elm version of HS Deck Viewer"
     , body =
         [ Html.node "style" [] [ Html.text "*:focus { outline: none !important; box-shadow: none !important;  }" ]
@@ -409,19 +424,19 @@ view { pasted, cards, decodedDecks } =
                                                 , paddingXY 12 6
                                                 , Border.roundEach <| { topLeft = 5, topRight = 0, bottomLeft = 5, bottomRight = 0 }
                                                 ]
-                                                { onPress = Nothing
+                                                { onPress = Just <| GenerateShortUrl
                                                 , label = text "Generate Short URL"
                                                 }
                                             , Input.text
-                                                [ htmlAttribute <|
-                                                    HA.id "urlInput"
+                                                [ htmlAttribute <| HA.id "urlInput"
+                                                , htmlAttribute <| HA.readonly True
                                                 , htmlAttribute <| HA.name "url"
                                                 , Border.rounded 0
                                                 ]
                                                 { onChange = always NoOp
                                                 , placeholder = Nothing
                                                 , label = Input.labelHidden ""
-                                                , text = ""
+                                                , text = shortUrl
                                                 }
                                             , Input.button
                                                 [ htmlAttribute <| HA.id "copyButton"
@@ -690,6 +705,19 @@ onEnter tagger =
 focusDeckInput : Cmd Msg
 focusDeckInput =
     Task.attempt (\_ -> NoOp) (Browser.Dom.focus "deckstring")
+
+
+getShortUrl : Cmd Msg
+getShortUrl =
+    let
+        currentUrl =
+            ""
+    in
+    Http.post
+        { url = "/.netlify/functions/shorturl"
+        , body = Http.jsonBody <| Encode.object [ ( "longUrl", Encode.string currentUrl ) ]
+        , expect = Http.expectJson (Result.map GotShortUrl >> Result.withDefault NoOp) (D.field "shortUrl" D.string)
+        }
 
 
 port decodeDeck : String -> Cmd msg
