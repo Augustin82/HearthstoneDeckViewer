@@ -1,6 +1,7 @@
 port module Main exposing (main)
 
 import Browser
+import Browser.Dom
 import Browser.Navigation as Navigation
 import Dict
 import Element exposing (..)
@@ -15,6 +16,7 @@ import Html.Events as HE
 import Http
 import Json.Decode as D
 import RemoteData exposing (RemoteData(..), WebData)
+import Task
 import Url
 import Url.Builder
 import Url.Parser
@@ -253,10 +255,10 @@ update msg model =
             ( model, copyToClipboard deckstring )
 
         RemoveDeck deckstring ->
-            ( { model | decodedDecks = Dict.remove deckstring model.decodedDecks }, Cmd.none )
+            ( { model | decodedDecks = Dict.remove deckstring model.decodedDecks }, focusDeckInput )
 
         RemoveAllDecks ->
-            ( { model | decodedDecks = Dict.empty }, Cmd.none )
+            ( { model | decodedDecks = Dict.empty }, focusDeckInput )
 
         ClickedLink urlRequest ->
             case urlRequest of
@@ -683,6 +685,11 @@ onEnter tagger =
                         D.fail "Ignoring, not 'Enter'!"
                 )
         )
+
+
+focusDeckInput : Cmd Msg
+focusDeckInput =
+    Task.attempt (\_ -> NoOp) (Browser.Dom.focus "deckstring")
 
 
 port decodeDeck : String -> Cmd msg
