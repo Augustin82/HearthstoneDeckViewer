@@ -33,6 +33,7 @@ type alias Model =
     , cards : WebData Cards
     , decodedDecks : Dict.Dict String (RemoteData String Deck)
     , queuedDecks : Dict.Dict String (RemoteData String Deck)
+    , currentUrl : String
     , shortUrl : String
     , key : Navigation.Key
     }
@@ -179,6 +180,7 @@ type Msg
     | RemoveAllDecks
     | GenerateShortUrl
     | GotShortUrl String
+    | CopyShortUrl
     | UrlChange Url.Url
     | NoOp
 
@@ -212,6 +214,7 @@ init _ url key =
       , cards = NotAsked
       , decodedDecks = Dict.empty
       , queuedDecks = deckstringsFromUrl |> List.map (\d -> ( d, Loading )) |> Dict.fromList
+      , currentUrl = Url.toString url
       , shortUrl = ""
       , key = key
       }
@@ -258,13 +261,16 @@ update msg model =
             ( model, Cmd.none )
 
         UrlChange url ->
-            ( { model | currentUrl = url.href }, Cmd.none )
+            ( { model | currentUrl = Url.toString url }, Cmd.none )
 
         GenerateShortUrl ->
-            ( model, getShortUrl )
+            ( model, getShortUrl <| Debug.log "" <| model.currentUrl )
 
         GotShortUrl shortUrl ->
             ( { model | shortUrl = shortUrl }, Cmd.none )
+
+        CopyShortUrl ->
+            ( model, copyToClipboard model.shortUrl )
 
         CopyDeckCode deckstring ->
             ( model, copyToClipboard deckstring )
@@ -298,26 +304,28 @@ update msg model =
             ( { model
                 | pasted = ""
               }
-            , Navigation.pushUrl model.key <|
-                Url.Builder.relative [] <|
-                    List.map (Url.Builder.string "deckstring") <|
-                        String.split "," <|
-                            String.replace " " "," <|
-                                model.pasted
+            , Cmd.none
             )
                 |> requestDecodedDeck deckcode
 
         DecodedDeck deckstring deck ->
-            ( { model
-                | decodedDecks =
+            let
+                newDecodedDecks =
                     model.decodedDecks
                         |> Dict.insert deckstring
                             (deck
                                 |> RemoteData.fromResult
                                 |> RemoteData.mapError (\_ -> "Decoding error")
                             )
+            in
+            ( { model
+                | decodedDecks = newDecodedDecks
+                , shortUrl = ""
               }
-            , Cmd.none
+            , Navigation.pushUrl model.key <|
+                Url.Builder.relative [] <|
+                    List.map (Url.Builder.string "deckstring") <|
+                        Dict.keys newDecodedDecks
             )
 
         GotCards result ->
@@ -447,7 +455,7 @@ view { pasted, cards, decodedDecks, shortUrl } =
                                                 , paddingXY 12 6
                                                 , Border.roundEach <| { topLeft = 0, topRight = 5, bottomLeft = 0, bottomRight = 5 }
                                                 ]
-                                                { onPress = Nothing
+                                                { onPress = Just CopyShortUrl
                                                 , label = image [ htmlAttribute <| HA.class "clippy", width <| px 13 ] { src = "images/clippy.svg", description = "Copy to clipboard" }
                                                 }
                                             ]
@@ -707,16 +715,15 @@ focusDeckInput =
     Task.attempt (\_ -> NoOp) (Browser.Dom.focus "deckstring")
 
 
-getShortUrl : Cmd Msg
-getShortUrl =
-    let
-        currentUrl =
-            ""
-    in
+getShortUrl : String -> Cmd Msg
+getShortUrl currentUrl =
     Http.post
         { url = "/.netlify/functions/shorturl"
         , body = Http.jsonBody <| Encode.object [ ( "longUrl", Encode.string currentUrl ) ]
-        , expect = Http.expectJson (Result.map GotShortUrl >> Result.withDefault NoOp) (D.field "shortUrl" D.string)
+        , expect =
+            Http.expectJson
+                (Result.map GotShortUrl >> Result.withDefault (GotShortUrl "url error"))
+                (D.field "shortUrl" D.string)
         }
 
 
