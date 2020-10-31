@@ -11,6 +11,7 @@ import Element.Input as Input
 import Element.Region as Region
 import Html
 import Html.Attributes as HA
+import Html.Events as HE
 import Http
 import Json.Decode as D
 import RemoteData exposing (RemoteData(..), WebData)
@@ -169,8 +170,9 @@ type Msg
     | AddDecks
     | DecodedDeck String (Result String Deck)
     | ClickedLink Browser.UrlRequest
-    | CopyDeckCode Deck
-    | RemoveDeck Deck
+    | CopyDeckCode String
+    | RemoveDeck String
+    | RemoveAllDecks
     | NoOp
 
 
@@ -247,11 +249,14 @@ update msg model =
         NoOp ->
             ( model, Cmd.none )
 
-        CopyDeckCode deck ->
+        CopyDeckCode deckstring ->
             ( model, Cmd.none )
 
-        RemoveDeck deck ->
-            ( model, Cmd.none )
+        RemoveDeck deckstring ->
+            ( { model | decodedDecks = Dict.remove deckstring model.decodedDecks }, Cmd.none )
+
+        RemoveAllDecks ->
+            ( { model | decodedDecks = Dict.empty }, Cmd.none )
 
         ClickedLink urlRequest ->
             case urlRequest of
@@ -359,6 +364,7 @@ view { pasted, cards, decodedDecks } =
                                             , width fill
                                             , Border.roundEach <| { topLeft = 5, topRight = 0, bottomLeft = 5, bottomRight = 0 }
                                             , Input.focusedOnLoad
+                                            , htmlAttribute <| onEnter AddDecks
                                             ]
                                             { placeholder =
                                                 Just <|
@@ -442,7 +448,7 @@ view { pasted, cards, decodedDecks } =
                                             , Border.rounded 5
                                             , centerX
                                             ]
-                                            { onPress = Nothing
+                                            { onPress = Just RemoveAllDecks
                                             , label = text "Remove All Decks"
                                             }
                                     ]
@@ -456,20 +462,15 @@ view { pasted, cards, decodedDecks } =
                     , height fill
                     ]
                   <|
-                    List.map
-                        (\deck ->
-                            el [ centerX ] <|
-                                viewDeck cards deck
-                        )
-                    <|
-                        Dict.values decodedDecks
+                    List.map (el [ centerX ] << viewDeck cards) <|
+                        Dict.toList decodedDecks
                 ]
         ]
     }
 
 
-viewDeck : WebData Cards -> RemoteData String Deck -> Element Msg
-viewDeck cards deck =
+viewDeck : WebData Cards -> ( String, RemoteData String Deck ) -> Element Msg
+viewDeck cards ( deckstring, deck ) =
     case deck of
         NotAsked ->
             none
@@ -485,7 +486,7 @@ viewDeck cards deck =
                 column [ spacing 0, Font.size 16, width <| px 240 ]
                     [ deckTitle cards d
                     , deckCards cards d
-                    , deckButtons d
+                    , deckButtons deckstring
                     ]
 
 
@@ -556,8 +557,8 @@ manaCostAndThenName c1 c2 =
         compare cost1 cost2
 
 
-deckButtons : Deck -> Element Msg
-deckButtons deck =
+deckButtons : String -> Element Msg
+deckButtons deckstring =
     column
         [ width fill
         , Border.roundEach { topLeft = 0, topRight = 0, bottomLeft = 5, bottomRight = 5 }
@@ -578,7 +579,7 @@ deckButtons deck =
             , Font.center
             , Font.size 14
             ]
-            { onPress = Just <| CopyDeckCode deck
+            { onPress = Just <| CopyDeckCode deckstring
             , label = text "Copy Deck Code"
             }
         , Input.button
@@ -593,7 +594,7 @@ deckButtons deck =
             , Font.center
             , Font.size 14
             ]
-            { onPress = Just <| RemoveDeck deck
+            { onPress = Just <| RemoveDeck deckstring
             , label = text "Remove Deck"
             }
         ]
@@ -667,6 +668,21 @@ viewDeckCard { name, cost, id } qty =
                 text <|
                     String.fromInt qty
         ]
+
+
+onEnter : Msg -> Html.Attribute Msg
+onEnter tagger =
+    HE.on "keyup"
+        (HE.keyCode
+            |> D.andThen
+                (\key ->
+                    if key == 13 then
+                        D.succeed tagger
+
+                    else
+                        D.fail "Ignoring, not 'Enter'!"
+                )
+        )
 
 
 port decodeDeck : String -> Cmd msg
