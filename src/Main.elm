@@ -246,7 +246,7 @@ fetchCards =
 
 requestDecodedDeck : String -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
 requestDecodedDeck code ( m, c ) =
-    ( { m | decodedDecks = m.decodedDecks |> Dict.insert code Loading }
+    ( { m | decodedDecks = m.decodedDecks |> Dict.insert code Loading, shortUrl = "" }
     , Cmd.batch
         [ c
         , decodeDeck code
@@ -276,10 +276,10 @@ update msg model =
             ( model, copyToClipboard deckstring )
 
         RemoveDeck deckstring ->
-            ( { model | decodedDecks = Dict.remove deckstring model.decodedDecks }, focusDeckInput )
+            ( { model | decodedDecks = Dict.remove deckstring model.decodedDecks, shortUrl = "" }, focusDeckInput )
 
         RemoveAllDecks ->
-            ( { model | decodedDecks = Dict.empty }, focusDeckInput )
+            ( { model | decodedDecks = Dict.empty, shortUrl = "" }, focusDeckInput )
 
         ClickedLink urlRequest ->
             case urlRequest of
