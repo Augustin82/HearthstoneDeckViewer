@@ -250,7 +250,7 @@ update msg model =
             ( model, Cmd.none )
 
         CopyDeckCode deckstring ->
-            ( model, Cmd.none )
+            ( model, copyToClipboard deckstring )
 
         RemoveDeck deckstring ->
             ( { model | decodedDecks = Dict.remove deckstring model.decodedDecks }, Cmd.none )
@@ -686,6 +686,9 @@ onEnter tagger =
 
 
 port decodeDeck : String -> Cmd msg
+
+
+port copyToClipboard : String -> Cmd msg
 
 
 port deckDecoded : (D.Value -> msg) -> Sub msg
