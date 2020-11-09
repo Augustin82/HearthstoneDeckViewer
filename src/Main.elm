@@ -3,6 +3,8 @@ port module Main exposing (main)
 import Browser
 import Browser.Dom
 import Browser.Navigation as Navigation
+import Button
+import Card
 import Dict
 import Element exposing (..)
 import Element.Background as Background
@@ -15,7 +17,8 @@ import Html
 import Html.Attributes as HA
 import Html.Events as HE
 import Http
-import Json.Decode as D
+import Json.Decode as Decode
+import Json.Decode.Utils as Pipeline
 import Json.Encode as Encode
 import OrderedDict exposing (OrderedDict)
 import RemoteData exposing (RemoteData(..), WebData)
@@ -24,6 +27,7 @@ import Url
 import Url.Builder
 import Url.Parser
 import Url.Parser.Query
+import Utils
 
 
 type alias Flags =
@@ -32,9 +36,9 @@ type alias Flags =
 
 type alias Model =
     { pasted : String
-    , cards : WebData Cards
-    , decodedDecks : OrderedDict String (RemoteData String Deck)
-    , queuedDecks : OrderedDict String (RemoteData String Deck)
+    , cards : WebData Card.Cards
+    , decodedDecks : OrderedDict String (RemoteData String Card.Deck)
+    , queuedDecks : OrderedDict String (RemoteData String Card.Deck)
     , currentUrl : String
     , shortUrl : String
     , tooltip : Maybe Tooltip
@@ -42,156 +46,22 @@ type alias Model =
     }
 
 
-type alias Cards =
-    Dict.Dict Int Card
-
-
-type alias Card =
-    { id : CardId
-    , dbfId : Int
-    , artist : Maybe String
-    , class : String
-    , collectible : Bool
-    , cost : Maybe Int
-    , flavor : Maybe String
-    , name : String
-    , rarity : String
-    , set : String
-    , type_ : String
-    , text : Maybe String
-    , attack : Maybe Int
-    , health : Maybe Int
-    }
-
-
-
--- type Rarity
---     = Free
---     | Basic
---     | Common
---     | Rare
---     | Epic
---     | Legendary
---
---
--- type HeroClass
---     = Rogue
---     | Priest
---     | Warlock
---     | Shaman
---     | Warrior
---     | DemonHunter
---     | Hunter
---     | Paladin
---     | Mage
---     | Druid
-
-
-andMap : D.Decoder a -> D.Decoder (a -> b) -> D.Decoder b
-andMap =
-    D.map2 (|>)
-
-
-type alias CardId =
-    String
-
-
-cardDecoder : D.Decoder Card
-cardDecoder =
-    D.succeed Card
-        |> andMap (D.field "id" D.string)
-        |> andMap (D.field "dbfId" D.int)
-        |> andMap (optional "artist" D.string)
-        |> andMap (D.field "cardClass" D.string)
-        |> andMap (D.field "collectible" D.bool)
-        |> andMap (optional "cost" D.int)
-        |> andMap (optional "flavor" D.string)
-        |> andMap (D.field "name" D.string)
-        |> andMap (D.field "rarity" D.string)
-        |> andMap (D.field "set" D.string)
-        |> andMap (D.field "type" D.string)
-        |> andMap (optional "text" D.string)
-        |> andMap (optional "attack" D.int)
-        |> andMap (optional "health" D.int)
-
-
-optional : String -> D.Decoder a -> D.Decoder (Maybe a)
-optional field dec =
-    D.oneOf
-        [ D.field field <| D.nullable dec
-        , D.succeed Nothing
-        ]
-
-
-cardsDecoder : D.Decoder Cards
-cardsDecoder =
-    D.list cardDecoder
-        |> D.map (List.map (\card -> ( card.dbfId, card )) >> Dict.fromList)
-
-
-type alias Deck =
-    { cards : List ( Int, Int )
-    , format : Int
-    , heroes : List Int
-    }
-
-
-deckDecoder : D.Decoder ( String, Deck )
-deckDecoder =
-    D.succeed Tuple.pair
-        |> andMap (D.field "deckstring" D.string)
-        |> andMap
-            (D.field "deck" <|
-                (D.succeed Deck
-                    |> andMap (D.field "cards" (D.list deckCardsDecoder))
-                    |> andMap (D.field "format" D.int)
-                    |> andMap (D.field "heroes" (D.list D.int))
-                )
-            )
-
-
-deckCardsDecoder : D.Decoder ( Int, Int )
-deckCardsDecoder =
-    D.list D.int
-        |> D.andThen
-            (\list ->
-                case list of
-                    id :: qty :: [] ->
-                        case qty of
-                            1 ->
-                                D.succeed ( id, 1 )
-
-                            2 ->
-                                D.succeed ( id, 2 )
-
-                            _ ->
-                                D.fail "Quantity must be 1 or 2"
-
-                    _ ->
-                        D.fail "Expecting exactly two elements in array"
-            )
-
-
-type alias Deckstring =
-    String
-
-
 type alias HttpError =
     String
 
 
 type alias Tooltip =
-    ( Deckstring, CardId )
+    ( Card.Deckstring, Card.Id )
 
 
 type Msg
     = UpdateInput String
-    | GotCards (WebData Cards)
+    | GotCards (WebData Card.Cards)
     | AddDecks
-    | DecodedDeck Deckstring (Result HttpError Deck)
+    | DecodedDeck Card.Deckstring (Result HttpError Card.Deck)
     | ClickedLink Browser.UrlRequest
-    | CopyDeckCode Deckstring
-    | RemoveDeck Deckstring
+    | CopyDeckCode Card.Deckstring
+    | RemoveDeck Card.Deckstring
     | RemoveAllDecks
     | GenerateShortUrl
     | GotShortUrl String
@@ -216,7 +86,7 @@ main =
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    deckDecoded (D.decodeValue deckDecoder >> Result.map (\( deckstring, deck ) -> DecodedDeck deckstring <| Ok deck) >> Result.withDefault NoOp)
+    deckDecoded (Decode.decodeValue Card.deckDecoder >> Result.map (\( deckstring, deck ) -> DecodedDeck deckstring <| Ok deck) >> Result.withDefault NoOp)
 
 
 init : Flags -> Url.Url -> Navigation.Key -> ( Model, Cmd Msg )
@@ -240,10 +110,6 @@ init _ url key =
     )
 
 
-
--- parseDeckstrings : Url.Parser.Parser (List String)
-
-
 parseDeckstrings : Url.Parser.Query.Parser (List String)
 parseDeckstrings =
     Url.Parser.Query.custom "deckstring" identity
@@ -258,7 +124,7 @@ fetchCards : Cmd Msg
 fetchCards =
     Http.get
         { url = hearthstoneAPICardsURl
-        , expect = Http.expectJson (RemoteData.fromResult >> GotCards) cardsDecoder
+        , expect = Http.expectJson (RemoteData.fromResult >> GotCards) Card.cardsDecoder
         }
 
 
@@ -363,7 +229,15 @@ view : Model -> Browser.Document Msg
 view { pasted, cards, decodedDecks, tooltip, shortUrl } =
     { title = "Elm version of HS Deck Viewer"
     , body =
-        [ layout
+        [ layoutWith
+            { options =
+                [ focusStyle
+                    { borderColor = Nothing
+                    , backgroundColor = Nothing
+                    , shadow = Nothing
+                    }
+                ]
+            }
             [ height fill
             , width fill
             , Background.color <| rgb255 22 26 58
@@ -414,7 +288,7 @@ view { pasted, cards, decodedDecks, tooltip, shortUrl } =
                                             , width fill
                                             , Border.roundEach <| { topLeft = 5, topRight = 0, bottomLeft = 5, bottomRight = 0 }
                                             , Input.focusedOnLoad
-                                            , htmlAttribute <| onEnter AddDecks
+                                            , htmlAttribute <| Utils.onEnter AddDecks
                                             ]
                                             { placeholder =
                                                 Just <|
@@ -424,18 +298,14 @@ view { pasted, cards, decodedDecks, tooltip, shortUrl } =
                                             , onChange = UpdateInput
                                             , text = pasted
                                             }
-                                        , Input.button
-                                            [ htmlAttribute <| HA.id "addButton"
-                                            , Font.color <| rgb255 255 255 255
-                                            , Border.widthEach { top = 1, right = 1, bottom = 1, left = 0 }
-                                            , Border.color <| rgb255 255 255 255
-                                            , height fill
-                                            , paddingXY 12 6
-                                            , Border.roundEach <| { topLeft = 0, topRight = 5, bottomLeft = 0, bottomRight = 5 }
-                                            ]
+                                        , Button.primaryButton
                                             { onPress = Just AddDecks
                                             , label = text "Add Deck(s)"
                                             }
+                                            |> Button.withAttrs [ htmlAttribute <| HA.id "addButton", height fill ]
+                                            |> Button.withRounded (Border.roundEach <| { topLeft = 0, topRight = 5, bottomLeft = 0, bottomRight = 5 })
+                                            |> Button.withBorderWidth (Border.widthEach { top = 1, right = 1, bottom = 1, left = 0 })
+                                            |> Button.viewButton
                                         ]
                                     , el [ Font.size 13, Font.color <| rgb255 0x6C 0x75 0x7D, centerX ] <|
                                         text "Separate multiple deck codes with whitespace or commas. Individual deck strings copied from the game client are also supported."
@@ -448,18 +318,14 @@ view { pasted, cards, decodedDecks, tooltip, shortUrl } =
                                             , centerX
                                             , padding 5
                                             ]
-                                            [ Input.button
-                                                [ htmlAttribute <| HA.id "urlButton"
-                                                , Font.color <| rgb255 255 255 255
-                                                , Border.widthEach { top = 1, right = 0, bottom = 1, left = 1 }
-                                                , Border.color <| rgb255 255 255 255
-                                                , height fill
-                                                , paddingXY 12 6
-                                                , Border.roundEach <| { topLeft = 5, topRight = 0, bottomLeft = 5, bottomRight = 0 }
-                                                ]
+                                            [ Button.primaryButton
                                                 { onPress = Just <| GenerateShortUrl
                                                 , label = text "Generate Short URL"
                                                 }
+                                                |> Button.withAttrs [ htmlAttribute <| HA.id "urlButton", height fill ]
+                                                |> Button.withRounded (Border.roundEach <| { topLeft = 5, topRight = 0, bottomLeft = 5, bottomRight = 0 })
+                                                |> Button.withBorderWidth (Border.widthEach { top = 1, right = 0, bottom = 1, left = 1 })
+                                                |> Button.viewButton
                                             , Input.text
                                                 [ htmlAttribute <| HA.id "urlInput"
                                                 , htmlAttribute <| HA.readonly True
@@ -471,36 +337,29 @@ view { pasted, cards, decodedDecks, tooltip, shortUrl } =
                                                 , label = Input.labelHidden ""
                                                 , text = shortUrl
                                                 }
-                                            , Input.button
-                                                [ htmlAttribute <| HA.id "copyButton"
-                                                , Font.color <| rgb255 255 255 255
-                                                , Border.widthEach { top = 1, right = 1, bottom = 1, left = 0 }
-                                                , Border.color <| rgb255 255 255 255
-                                                , height fill
-                                                , paddingXY 12 6
-                                                , Border.roundEach <| { topLeft = 0, topRight = 5, bottomLeft = 0, bottomRight = 5 }
-                                                ]
+                                            , Button.primaryButton
                                                 { onPress = Just CopyShortUrl
                                                 , label = image [ htmlAttribute <| HA.class "clippy", width <| px 13 ] { src = "images/clippy.svg", description = "Copy to clipboard" }
                                                 }
+                                                |> Button.withAttrs [ htmlAttribute <| HA.id "copyButton", height fill ]
+                                                |> Button.withRounded (Border.roundEach <| { topLeft = 0, topRight = 5, bottomLeft = 0, bottomRight = 5 })
+                                                |> Button.withBorderWidth (Border.widthEach { top = 1, right = 1, bottom = 1, left = 0 })
+                                                |> Button.viewButton
                                             ]
                                     , if not <| List.any RemoteData.isSuccess <| OrderedDict.orderedValues decodedDecks then
                                         none
 
                                       else
-                                        Input.button
-                                            [ htmlAttribute <| HA.id "removeButton"
-                                            , Font.color <| rgb255 255 255 255
-                                            , Border.width 1
-                                            , Border.color <| rgb255 255 255 255
-                                            , height <| px 42
-                                            , paddingXY 12 6
-                                            , Border.rounded 5
-                                            , centerX
-                                            ]
+                                        Button.primaryButton
                                             { onPress = Just RemoveAllDecks
                                             , label = text "Remove All Decks"
                                             }
+                                            |> Button.withAttrs
+                                                [ htmlAttribute <| HA.id "removeButton"
+                                                , height <| px 42
+                                                , centerX
+                                                ]
+                                            |> Button.viewButton
                                     ]
                                 , el [ width <| fillPortion 1 ] <| none
                                 ]
@@ -530,7 +389,7 @@ view { pasted, cards, decodedDecks, tooltip, shortUrl } =
     }
 
 
-viewDeck : WebData Cards -> Maybe Tooltip -> ( String, RemoteData String Deck ) -> Element Msg
+viewDeck : WebData Card.Cards -> Maybe Tooltip -> ( String, RemoteData String Card.Deck ) -> Element Msg
 viewDeck cards tooltip ( deckstring, deck ) =
     case deck of
         NotAsked ->
@@ -561,7 +420,7 @@ viewDeck cards tooltip ( deckstring, deck ) =
                     ]
 
 
-deckTitle : WebData Cards -> Deck -> Element msg
+deckTitle : WebData Card.Cards -> Card.Deck -> Element msg
 deckTitle cards deck =
     let
         hero =
@@ -596,7 +455,7 @@ deckTitle cards deck =
         |> Maybe.withDefault none
 
 
-deckCards : WebData Cards -> Maybe Tooltip -> Deckstring -> Deck -> Element Msg
+deckCards : WebData Card.Cards -> Maybe Tooltip -> Card.Deckstring -> Card.Deck -> Element Msg
 deckCards cards tooltip deckstring deck =
     column [ width fill ] <|
         List.map (\( card, qty ) -> viewDeckCard tooltip deckstring card qty) <|
@@ -612,7 +471,7 @@ deckCards cards tooltip deckstring deck =
                     deck.cards
 
 
-manaCostAndThenName : Card -> Card -> Order
+manaCostAndThenName : Card.Card -> Card.Card -> Order
 manaCostAndThenName c1 c2 =
     let
         cost1 =
@@ -638,50 +497,46 @@ deckButtons deckstring =
         , padding 10
         , spacing 10
         ]
-        [ Input.button
-            [ htmlAttribute <| HA.id "copyDeckCode"
-            , Font.color <| rgb 0 0 0
-            , Border.width 1
-            , Border.color <| rgb 0 0 0
-            , height fill
-            , width fill
-            , paddingXY 12 6
-            , Border.rounded 3
-            , Font.center
-            , Font.size 14
-            ]
+        [ Button.secondaryButton
             { onPress = Just <| CopyDeckCode deckstring
             , label = text "Copy Deck Code"
             }
-        , Input.button
-            [ htmlAttribute <| HA.id "removeDeck"
-            , Font.color <| rgb 0 0 0
-            , Border.width 1
-            , Border.color <| rgb 0 0 0
-            , height fill
-            , width fill
-            , paddingXY 12 6
-            , Border.rounded 3
-            , Font.center
-            , Font.size 14
-            ]
+            |> Button.withAttrs
+                [ htmlAttribute <| HA.id "copyDeckCode"
+                , height <| px 42
+                , width fill
+                , centerX
+                , Font.center
+                ]
+            |> Button.withFontSize (Font.size 14)
+            |> Button.viewButton
+        , Button.secondaryButton
             { onPress = Just <| RemoveDeck deckstring
             , label = text "Remove Deck"
             }
+            |> Button.withAttrs
+                [ htmlAttribute <| HA.id "removeDeck"
+                , height <| px 42
+                , width fill
+                , centerX
+                , Font.center
+                ]
+            |> Button.withFontSize (Font.size 14)
+            |> Button.viewButton
         ]
 
 
-tileUrlForId : CardId -> String
+tileUrlForId : Card.Id -> String
 tileUrlForId id =
     "/images/tiles/" ++ id ++ ".png"
 
 
-imageUrlForId : CardId -> String
+imageUrlForId : Card.Id -> String
 imageUrlForId id =
     "/images/cards/" ++ id ++ ".png"
 
 
-imageUrlForHero : WebData Cards -> Int -> String
+imageUrlForHero : WebData Card.Cards -> Int -> String
 imageUrlForHero cards dbfId =
     let
         id =
@@ -697,7 +552,7 @@ manaCrystal =
     "/images/mana_crystal.png"
 
 
-viewDeckCard : Maybe Tooltip -> Deckstring -> Card -> Int -> Element Msg
+viewDeckCard : Maybe Tooltip -> Card.Deckstring -> Card.Card -> Int -> Element Msg
 viewDeckCard tooltip deckstring { name, cost, id } qty =
     row
         [ width fill
@@ -789,21 +644,6 @@ viewDeckCard tooltip deckstring { name, cost, id } qty =
         ]
 
 
-onEnter : Msg -> Html.Attribute Msg
-onEnter tagger =
-    HE.on "keyup"
-        (HE.keyCode
-            |> D.andThen
-                (\key ->
-                    if key == 13 then
-                        D.succeed tagger
-
-                    else
-                        D.fail "Ignoring, not 'Enter'!"
-                )
-        )
-
-
 focusDeckInput : Cmd Msg
 focusDeckInput =
     Task.attempt (\_ -> NoOp) (Browser.Dom.focus "deckstring")
@@ -817,7 +657,7 @@ getShortUrl currentUrl =
         , expect =
             Http.expectJson
                 (Result.map GotShortUrl >> Result.withDefault (GotShortUrl "url error"))
-                (D.field "shortUrl" D.string)
+                (Decode.field "shortUrl" Decode.string)
         }
 
 
@@ -830,4 +670,4 @@ port copyToClipboard : String -> Cmd msg
 port fixTooltipPlacement : String -> Cmd msg
 
 
-port deckDecoded : (D.Value -> msg) -> Sub msg
+port deckDecoded : (Decode.Value -> msg) -> Sub msg
