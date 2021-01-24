@@ -165,10 +165,22 @@ update msg model =
             ( model, copyToClipboard deckstring )
 
         RemoveDeck deckstring ->
-            ( { model | decodedDecks = OrderedDict.remove deckstring model.decodedDecks, shortUrl = "" }, focusDeckInput )
+            let
+                newDecodedDecks =
+                    OrderedDict.remove deckstring model.decodedDecks
+            in
+            ( { model | decodedDecks = newDecodedDecks, shortUrl = "" }
+            , Cmd.batch
+                [ focusDeckInput, updateUrlWithDecks model.key newDecodedDecks ]
+            )
 
         RemoveAllDecks ->
-            ( { model | decodedDecks = OrderedDict.empty, shortUrl = "" }, focusDeckInput )
+            ( { model | decodedDecks = OrderedDict.empty, shortUrl = "" }
+            , Cmd.batch
+                [ focusDeckInput
+                , updateUrlWithDecks model.key OrderedDict.empty
+                ]
+            )
 
         ClickedLink urlRequest ->
             case urlRequest of
@@ -211,17 +223,22 @@ update msg model =
                 | decodedDecks = newDecodedDecks
                 , shortUrl = ""
               }
-            , Navigation.pushUrl model.key <|
-                Url.Builder.relative [] <|
-                    List.map (Url.Builder.string "deckstring") <|
-                        .order <|
-                            newDecodedDecks
+            , updateUrlWithDecks model.key newDecodedDecks
             )
 
         GotCards result ->
             model.queuedDecks
                 |> .dict
                 |> Dict.foldl (\code _ ( m, c ) -> ( m, c ) |> requestDecodedDeck code) ( { model | cards = result, queuedDecks = OrderedDict.empty }, Cmd.none )
+
+
+updateUrlWithDecks : Navigation.Key -> { a | order : List String } -> Cmd msg
+updateUrlWithDecks key decks =
+    Navigation.replaceUrl key <|
+        Url.Builder.absolute [] <|
+            List.map (Url.Builder.string "deckstring") <|
+                .order <|
+                    decks
 
 
 view : Model -> Browser.Document Msg
