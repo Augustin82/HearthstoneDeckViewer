@@ -12,6 +12,7 @@ import Element.Border as Border
 import Element.Events as Events
 import Element.Font as Font
 import Element.Input as Input
+import Element.Lazy as Lazy
 import Element.Region as Region
 import Html
 import Html.Attributes as HA
@@ -415,7 +416,27 @@ viewDeck cards tooltip ( deckstring, deck ) =
                     [ deckTitle cards d
                     , deckCards cards tooltip deckstring d
                     , deckButtons deckstring
+                    , cardImages cards d
                     ]
+
+
+cardImages : WebData Card.Cards -> Card.Deck -> Element msg
+cardImages cards deck =
+    case cards of
+        Success cs ->
+            el [ htmlAttribute <| HA.style "display" "none" ] <|
+                column [] <|
+                    List.filterMap
+                        (\( dbfId, _ ) ->
+                            Dict.get dbfId cs
+                                |> Maybe.map (.id >> imageUrlForId >> (\src -> image [] { src = src, description = "" }))
+                        )
+                    <|
+                        .cards <|
+                            deck
+
+        _ ->
+            none
 
 
 deckTitle : WebData Card.Cards -> Card.Deck -> Element msg
@@ -454,8 +475,17 @@ deckTitle cards deck =
 
 deckCards : WebData Card.Cards -> Maybe Tooltip -> Card.Deckstring -> Card.Deck -> Element Msg
 deckCards cards tooltip deckstring deck =
+    let
+        showTooltip ds c =
+            case tooltip of
+                Nothing ->
+                    False
+
+                Just ( tds, tc ) ->
+                    tds == ds && tc == c.id
+    in
     column [ width fill ] <|
-        List.map (\( card, qty ) -> viewDeckCard tooltip deckstring card qty) <|
+        List.map (\( card, qty ) -> Lazy.lazy4 viewDeckCard (showTooltip deckstring card) deckstring card qty) <|
             List.sortWith (\( c1, _ ) ( c2, _ ) -> manaCostAndThenName c1 c2) <|
                 List.filterMap
                     (\( dbfId, qty ) ->
@@ -549,8 +579,8 @@ manaCrystal =
     "/images/mana_crystal.png"
 
 
-viewDeckCard : Maybe Tooltip -> Card.Deckstring -> Card.Card -> Int -> Element Msg
-viewDeckCard tooltip deckstring { name, cost, id } qty =
+viewDeckCard : Bool -> Card.Deckstring -> Card.Card -> Int -> Element Msg
+viewDeckCard showTooltip deckstring { name, cost, id } qty =
     row
         [ width fill
         , Font.color <| rgb255 255 255 255
@@ -560,51 +590,46 @@ viewDeckCard tooltip deckstring { name, cost, id } qty =
         , Events.onMouseEnter <| ShowTooltip <| ( deckstring, id )
         , Events.onMouseLeave <| HideTooltip
         , onRight <|
-            case tooltip of
-                Nothing ->
-                    none
+            if not showTooltip then
+                none
 
-                Just ( d, cId ) ->
-                    if d == deckstring && cId == id then
-                        row
-                            [ htmlAttribute <| HA.style "z-index" "1100"
-                            , htmlAttribute <| HA.style "position" "absolute"
-                            , htmlAttribute <| HA.id <| deckstring ++ id
-                            , moveUp 10
-                            ]
-                            [ el
-                                [ width <| px 0
-                                , height <| px 0
-                                , alignTop
-                                , Background.color <| rgba 1 1 1 0
-                                , htmlAttribute <| HA.style "position" "absolute"
-                                , htmlAttribute <| HA.style "border-top" "8px solid transparent"
-                                , htmlAttribute <| HA.style "border-bottom" "8px solid transparent"
-                                , htmlAttribute <| HA.style "border-right" "8px solid black" -- #161A3A"
-                                , moveDown 16
-                                , htmlAttribute <| HA.id <| deckstring ++ id ++ "-pointer"
-                                ]
-                              <|
-                                text ""
-                            , el
-                                [ Background.color <| rgb 0 0 0
-                                , Border.rounded 15
-                                , height fill
-                                , width <| px 300
-                                , height <| px 450
-                                , htmlAttribute <| HA.style "position" "absolute"
-                                , htmlAttribute <| HA.style "left" "8px"
-                                , htmlAttribute <| HA.id <| deckstring ++ id ++ "-content"
-                                ]
-                              <|
-                                image [ centerX, centerY ]
-                                    { src = imageUrlForId id
-                                    , description = name
-                                    }
-                            ]
-
-                    else
-                        none
+            else
+                row
+                    [ htmlAttribute <| HA.style "z-index" "1100"
+                    , htmlAttribute <| HA.style "position" "absolute"
+                    , htmlAttribute <| HA.id <| deckstring ++ id
+                    , moveUp 10
+                    ]
+                    [ el
+                        [ width <| px 0
+                        , height <| px 0
+                        , alignTop
+                        , Background.color <| rgba 1 1 1 0
+                        , htmlAttribute <| HA.style "position" "absolute"
+                        , htmlAttribute <| HA.style "border-top" "8px solid transparent"
+                        , htmlAttribute <| HA.style "border-bottom" "8px solid transparent"
+                        , htmlAttribute <| HA.style "border-right" "8px solid black" -- #161A3A"
+                        , moveDown 16
+                        , htmlAttribute <| HA.id <| deckstring ++ id ++ "-pointer"
+                        ]
+                      <|
+                        text ""
+                    , el
+                        [ Background.color <| rgb 0 0 0
+                        , Border.rounded 15
+                        , height fill
+                        , width <| px 300
+                        , height <| px 450
+                        , htmlAttribute <| HA.style "position" "absolute"
+                        , htmlAttribute <| HA.style "left" "8px"
+                        , htmlAttribute <| HA.id <| deckstring ++ id ++ "-content"
+                        ]
+                      <|
+                        image [ centerX, centerY ]
+                            { src = imageUrlForId id
+                            , description = name
+                            }
+                    ]
         ]
         [ el
             [ width <| px 25

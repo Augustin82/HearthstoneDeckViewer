@@ -35,6 +35,9 @@ app.ports.fixTooltipPlacement.subscribe(function (id) {
         const contentRadius = 15;
         const tooltipContent = document.getElementById(id + "-content");
         const tooltipPointer = document.getElementById(id + "-pointer");
+        if (!tooltipContent || !tooltipPointer) {
+            return;
+        }
         const tooltipContentRect = tooltipContent.getBoundingClientRect();
         const tooltipContentLeft = tooltipContentRect.x;
         const tooltipContentTop = tooltipContentRect.y;
@@ -71,15 +74,8 @@ app.ports.fixTooltipPlacement.subscribe(function (id) {
             tooltipContentBottom + screenPadding - window.innerHeight;
         if (overflowY > 0) {
             contentOffsetY = -overflowY;
-
-            console.log(
-                tooltipPointerBottom,
-                tooltipContentBottom,
-                contentOffsetY
-            );
             const pointerPositionWRTContent =
                 tooltipPointerBottom - (tooltipContentBottom + contentOffsetY);
-            console.log(pointerPositionWRTContent);
             if (pointerPositionWRTContent > 0) {
                 contentOffsetY =
                     contentOffsetY + pointerPositionWRTContent + contentRadius;
