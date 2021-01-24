@@ -153,7 +153,7 @@ update msg model =
             ( { model | currentUrl = Url.toString url }, Cmd.none )
 
         GenerateShortUrl ->
-            ( model, getShortUrl <| Debug.log "" <| model.currentUrl )
+            ( model, getShortUrl model.currentUrl )
 
         GotShortUrl shortUrl ->
             ( { model | shortUrl = shortUrl }, Cmd.none )
@@ -199,15 +199,19 @@ update msg model =
 
         AddDecks ->
             let
-                deckcode =
+                deckcodes =
                     model.pasted
+                        |> Utils.clean
+                        |> String.split ","
+                        |> List.concatMap (String.split " ")
             in
-            ( { model
-                | pasted = ""
-              }
-            , Cmd.none
-            )
-                |> requestDecodedDeck deckcode
+            deckcodes
+                |> List.foldl requestDecodedDeck
+                    ( { model
+                        | pasted = ""
+                      }
+                    , Cmd.none
+                    )
 
         DecodedDeck deckstring deck ->
             let

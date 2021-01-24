@@ -4,7 +4,7 @@ import Element exposing (..)
 import Html
 import Html.Events as HE
 import Json.Decode as Decode
-import Regex
+import Regex exposing (Regex)
 
 
 makeDarker : Float -> Color -> Color
@@ -227,7 +227,7 @@ replaceLigatureAndDiacriticReplacer { match } =
             match
 
 
-frenchDiacriticsAndLigaturesRegexMatcher : Regex.Regex
+frenchDiacriticsAndLigaturesRegexMatcher : Regex
 frenchDiacriticsAndLigaturesRegexMatcher =
     Regex.fromString "[ÁÀÄÂáàäâÉÈËÊéèëêÍÌÏÎíìïîÓÒÖÔóòöôÚÙÜÛúùüûÝỲŸŶýỳÿŷÇçŒœÆæ]"
         |> Maybe.withDefault Regex.never
@@ -289,3 +289,20 @@ onEnter tagger =
                         Decode.fail "Ignoring, not 'Enter'!"
                 )
         )
+
+
+{-| Trim the whitespace of both sides of the string and compress
+repeated whitespace internally to a single whitespace char.
+clean " The quick brown fox " == "The quick brown fox"
+taken from <https://github.com/elm-community/string-extra/> v4.0.1
+-}
+clean : String -> String
+clean string =
+    string
+        |> Regex.replace (regexFromString "\\s\\s+") (always " ")
+        |> String.trim
+
+
+regexFromString : String -> Regex
+regexFromString =
+    Regex.fromString >> Maybe.withDefault Regex.never
