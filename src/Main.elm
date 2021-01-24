@@ -95,6 +95,8 @@ init _ url key =
             url
                 |> Url.Parser.parse (Url.Parser.query parseDeckstrings)
                 |> Maybe.withDefault []
+                |> List.filterMap (Url.percentDecode)
+
     in
     ( { pasted = ""
       , cards = NotAsked
@@ -240,7 +242,7 @@ updateUrlWithDecks : Navigation.Key -> { a | order : List String } -> Cmd msg
 updateUrlWithDecks key decks =
     Navigation.replaceUrl key <|
         Url.Builder.absolute [] <|
-            List.map (Url.Builder.string "deckstring") <|
+            List.map (Url.percentEncode >> Url.Builder.string "deckstring") <|
                 .order <|
                     decks
 
