@@ -15,10 +15,8 @@ import Element.Input as Input
 import Element.Region as Region
 import Html
 import Html.Attributes as HA
-import Html.Events as HE
 import Http
 import Json.Decode as Decode
-import Json.Decode.Utils as Pipeline
 import Json.Encode as Encode
 import OrderedDict exposing (OrderedDict)
 import RemoteData exposing (RemoteData(..), WebData)
@@ -428,13 +426,12 @@ deckTitle cards deck =
                 |> List.head
 
         cardClass =
-            case hero of
-                Just h ->
-                    Dict.get h <|
-                        RemoteData.withDefault Dict.empty cards
-
-                Nothing ->
-                    Nothing
+            hero
+                |> Maybe.andThen
+                    (\h ->
+                        Dict.get h <|
+                            RemoteData.withDefault Dict.empty cards
+                    )
     in
     hero
         |> Maybe.map
@@ -559,9 +556,9 @@ viewDeckCard tooltip deckstring { name, cost, id } qty =
         , Font.color <| rgb255 255 255 255
         , height <| px 30
         , Background.image <| tileUrlForId id
+        , pointer
         , Events.onMouseEnter <| ShowTooltip <| ( deckstring, id )
-
-        -- , Events.onMouseLeave <| HideTooltip
+        , Events.onMouseLeave <| HideTooltip
         , onRight <|
             case tooltip of
                 Nothing ->
@@ -571,6 +568,7 @@ viewDeckCard tooltip deckstring { name, cost, id } qty =
                     if d == deckstring && cId == id then
                         row
                             [ htmlAttribute <| HA.style "z-index" "1100"
+                            , htmlAttribute <| HA.style "position" "absolute"
                             , htmlAttribute <| HA.id <| deckstring ++ id
                             , moveUp 10
                             ]
@@ -579,19 +577,24 @@ viewDeckCard tooltip deckstring { name, cost, id } qty =
                                 , height <| px 0
                                 , alignTop
                                 , Background.color <| rgba 1 1 1 0
-                                , htmlAttribute <| HA.style "border-top" "10px solid transparent"
-                                , htmlAttribute <| HA.style "border-bottom" "10px solid transparent"
-                                , htmlAttribute <| HA.style "border-right" "10px solid #161A3A"
-                                , moveDown 15
+                                , htmlAttribute <| HA.style "position" "absolute"
+                                , htmlAttribute <| HA.style "border-top" "8px solid transparent"
+                                , htmlAttribute <| HA.style "border-bottom" "8px solid transparent"
+                                , htmlAttribute <| HA.style "border-right" "8px solid black" -- #161A3A"
+                                , moveDown 16
+                                , htmlAttribute <| HA.id <| deckstring ++ id ++ "-pointer"
                                 ]
                               <|
                                 text ""
                             , el
-                                [ Background.color <| rgb255 22 26 58
+                                [ Background.color <| rgb 0 0 0
                                 , Border.rounded 15
                                 , height fill
                                 , width <| px 300
                                 , height <| px 450
+                                , htmlAttribute <| HA.style "position" "absolute"
+                                , htmlAttribute <| HA.style "left" "8px"
+                                , htmlAttribute <| HA.id <| deckstring ++ id ++ "-content"
                                 ]
                               <|
                                 image [ centerX, centerY ]

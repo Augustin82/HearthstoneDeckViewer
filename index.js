@@ -7,7 +7,6 @@ const app = Elm.Main.init({ node: node, flags: flags });
 
 app.ports.decodeDeck.subscribe(function (deckstring) {
     const deck = deckstrings.decode(deckstring);
-    console.log("deck", deck);
     app.ports.deckDecoded.send({ deck, deckstring });
 });
 
@@ -32,18 +31,67 @@ app.ports.copyToClipboard.subscribe(function (textToCopy) {
 app.ports.fixTooltipPlacement.subscribe(function (id) {
     requestAnimationFrame(function () {
         const screenPadding = 16;
-        const tooltip = document.getElementById(id);
-        const rect = tooltip.getBoundingClientRect();
+        const columnWidth = 250;
+        const contentRadius = 15;
+        const tooltipContent = document.getElementById(id + "-content");
+        const tooltipPointer = document.getElementById(id + "-pointer");
+        const tooltipContentRect = tooltipContent.getBoundingClientRect();
+        const tooltipContentLeft = tooltipContentRect.x;
+        const tooltipContentTop = tooltipContentRect.y;
+        const tooltipContentHeight = tooltipContentRect.height;
+        const tooltipContentBottom = tooltipContentTop + tooltipContentHeight;
+        const tooltipContentWidth = tooltipContentRect.width;
+        const tooltipPointerRect = tooltipPointer.getBoundingClientRect();
+        const tooltipPointerWidth = tooltipPointerRect.width;
+        const tooltipPointerHeight = tooltipPointerRect.height;
+        const tooltipPointerTop = tooltipPointerRect.y;
+        const tooltipPointerBottom = tooltipPointerTop + tooltipPointerHeight;
+        let contentOffsetX = 0,
+            contentOffsetY = 0;
+        let pointerOffsetX = 0,
+            pointerScaleX = 1;
 
-        console.log(rect);
-        if (rect.x < 0) {
-            tooltip.style.transform = `translateX(${
-                -rect.x + screenPadding
-            }px)`;
-        } else if (rect.x + 450 > window.outerWidth) {
-            tooltip.style.transform = `translateX(${
-                window.outerWidth - rect.x - screenPadding
-            }px)`;
+        // check if the tooltip needs to be flipped from right to left
+        if (
+            tooltipContentLeft + tooltipContentWidth + screenPadding >
+            window.innerWidth
+        ) {
+            // if the tooltip overflows to the right, it is moved to the left, but cannot overflow to the left
+            contentOffsetX = tooltipContentWidth + columnWidth;
+            if (tooltipContentLeft < contentOffsetX) {
+                contentOffsetX = tooltipContentLeft - screenPadding;
+            }
+            pointerScaleX = -1;
+            pointerOffsetX =
+                tooltipContentWidth - contentOffsetX + tooltipPointerWidth;
         }
+
+        // check if the tooltip needs to be moved up
+        const overflowY =
+            tooltipContentBottom + screenPadding - window.innerHeight;
+        if (overflowY > 0) {
+            contentOffsetY = -overflowY;
+
+            console.log(
+                tooltipPointerBottom,
+                tooltipContentBottom,
+                contentOffsetY
+            );
+            const pointerPositionWRTContent =
+                tooltipPointerBottom - (tooltipContentBottom + contentOffsetY);
+            console.log(pointerPositionWRTContent);
+            if (pointerPositionWRTContent > 0) {
+                contentOffsetY =
+                    contentOffsetY + pointerPositionWRTContent + contentRadius;
+            }
+        }
+
+        const transformContent = `translate(${
+            contentOffsetX * -1
+        }px, ${contentOffsetY}px)`;
+        tooltipContent.style.transform = transformContent;
+
+        const transformPointer = `translate(${pointerOffsetX}px, 16px) scaleX(${pointerScaleX})`;
+        tooltipPointer.style.transform = transformPointer;
     });
 });
