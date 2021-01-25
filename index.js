@@ -5,9 +5,9 @@ const node = document.getElementById("elm");
 const flags = {};
 const app = Elm.Main.init({ node: node, flags: flags });
 
-app.ports.decodeDeck.subscribe(function (deckstring) {
+app.ports.decodeDeck.subscribe(function ([deckstring, title]) {
     const deck = deckstrings.decode(deckstring);
-    app.ports.deckDecoded.send({ deck, deckstring });
+    app.ports.deckDecoded.send({ deck, deckstring, title });
 });
 
 app.ports.copyToClipboard.subscribe(function (textToCopy) {

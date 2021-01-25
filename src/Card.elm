@@ -83,12 +83,13 @@ type alias Deck =
     { cards : List ( Int, Int )
     , format : Int
     , heroes : List Int
+    , title : Maybe String
     }
 
 
 deckDecoder : Decode.Decoder ( String, Deck )
 deckDecoder =
-    Decode.succeed Tuple.pair
+    Decode.succeed (\ds d t -> ( ds, { d | title = t } ))
         |> Pipeline.andMap (Decode.field "deckstring" Decode.string)
         |> Pipeline.andMap
             (Decode.field "deck" <|
@@ -96,8 +97,10 @@ deckDecoder =
                     |> Pipeline.andMap (Decode.field "cards" (Decode.list deckCardsDecoder))
                     |> Pipeline.andMap (Decode.field "format" Decode.int)
                     |> Pipeline.andMap (Decode.field "heroes" (Decode.list Decode.int))
+                    |> Pipeline.andMap (Decode.succeed Nothing)
                 )
             )
+        |> Pipeline.andMap (Decode.field "title" <| Decode.nullable Decode.string)
 
 
 deckCardsDecoder : Decode.Decoder ( Int, Int )

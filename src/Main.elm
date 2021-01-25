@@ -85,7 +85,14 @@ main =
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    deckDecoded (Decode.decodeValue Card.deckDecoder >> Result.map (\( deckstring, deck ) -> DecodedDeck deckstring <| Ok deck) >> Result.withDefault NoOp)
+    deckDecoded
+        (Decode.decodeValue Card.deckDecoder
+            >> Result.map
+                (\( deckstring, deck ) ->
+                    DecodedDeck deckstring <| Ok deck
+                )
+            >> Result.withDefault NoOp
+        )
 
 
 init : Flags -> Url.Url -> Navigation.Key -> ( Model, Cmd Msg )
@@ -95,8 +102,7 @@ init _ url key =
             url
                 |> Url.Parser.parse (Url.Parser.query parseDeckstrings)
                 |> Maybe.withDefault []
-                |> List.filterMap (Url.percentDecode)
-
+                |> List.filterMap Url.percentDecode
     in
     ( { pasted = ""
       , cards = NotAsked
@@ -129,12 +135,12 @@ fetchCards =
         }
 
 
-requestDecodedDeck : String -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
-requestDecodedDeck code ( m, c ) =
+requestDecodedDeck : ( String, Maybe String ) -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+requestDecodedDeck ( code, title ) ( m, c ) =
     ( { m | decodedDecks = m.decodedDecks |> OrderedDict.insert code Loading, shortUrl = "" }
     , Cmd.batch
         [ c
-        , decodeDeck code
+        , decodeDeck ( code, title )
         ]
     )
 
@@ -202,10 +208,36 @@ update msg model =
         AddDecks ->
             let
                 deckcodes =
-                    model.pasted
-                        |> Utils.clean
-                        |> String.split ","
-                        |> List.concatMap (String.split " ")
+                    if String.contains "deck in Hearthstone" model.pasted then
+                        -- a single deck from the client
+                        let
+                            title =
+                                model.pasted
+                                    |> Utils.clean
+                                    |> String.split "#"
+                                    |> List.filter ((/=) "")
+                                    |> List.head
+                                    |> Maybe.map String.trim
+
+                            code =
+                                model.pasted
+                                    |> Utils.clean
+                                    |> String.split " "
+                                    |> List.sortBy String.length
+                                    |> List.reverse
+                                    |> List.head
+                        in
+                        code
+                            |> Maybe.map (\c -> [ ( c, title ) ])
+                            |> Maybe.withDefault []
+
+                    else
+                        -- potentially several decks separated by commas and/or spaces
+                        model.pasted
+                            |> Utils.clean
+                            |> String.split ","
+                            |> List.concatMap (String.split " ")
+                            |> List.map (\c -> ( c, Nothing ))
             in
             deckcodes
                 |> List.foldl requestDecodedDeck
@@ -235,7 +267,12 @@ update msg model =
         GotCards result ->
             model.queuedDecks
                 |> .dict
-                |> Dict.foldl (\code _ ( m, c ) -> ( m, c ) |> requestDecodedDeck code) ( { model | cards = result, queuedDecks = OrderedDict.empty }, Cmd.none )
+                |> Dict.foldl
+                    (\code _ ( m, c ) ->
+                        ( m, c )
+                            |> requestDecodedDeck ( code, Nothing )
+                    )
+                    ( { model | cards = result, queuedDecks = OrderedDict.empty }, Cmd.none )
 
 
 updateUrlWithDecks : Navigation.Key -> { a | order : List String } -> Cmd msg
@@ -299,8 +336,6 @@ view { pasted, cards, decodedDecks, tooltip, shortUrl } =
                                 , column [ width <| fillPortion 8, htmlAttribute <| HA.style "max-width" "800px", spacing 10 ]
                                     [ row
                                         [ width fill
-
-                                        -- , Font.color <| rgb255 0xF8 0xF9 0xFA
                                         , Font.color <| rgb255 0x49 0x50 0x57
                                         ]
                                         [ Input.text
@@ -476,22 +511,25 @@ deckTitle cards deck =
                         Dict.get h <|
                             RemoteData.withDefault Dict.empty cards
                     )
+                |> Maybe.map .class
+
+        title =
+            deck.title
+                |> Maybe.withDefault (cardClass |> Maybe.withDefault "UNKNOWN")
     in
     hero
         |> Maybe.map
-            (\int ->
+            (\dbfId ->
                 el
                     [ width fill
                     , Border.roundEach { topLeft = 5, topRight = 5, bottomLeft = 0, bottomRight = 0 }
-                    , htmlAttribute <| HA.style "background-image" <| "url(" ++ imageUrlForHero cards int ++ ")"
+                    , htmlAttribute <| HA.style "background-image" <| "url(" ++ imageUrlForHero cards dbfId ++ ")"
                     , htmlAttribute <| HA.style "background-position" "right bottom 90px"
                     ]
                 <|
                     el [ centerX, centerY, Font.size 20, padding 21, Font.glow (rgb 0 0 0) 1, Font.color <| rgb 1 1 1 ] <|
                         text <|
-                            Maybe.withDefault "UNKNOWN" <|
-                                Maybe.map .class <|
-                                    cardClass
+                            title
             )
         |> Maybe.withDefault none
 
@@ -712,7 +750,7 @@ getShortUrl currentUrl =
         }
 
 
-port decodeDeck : String -> Cmd msg
+port decodeDeck : ( String, Maybe String ) -> Cmd msg
 
 
 port copyToClipboard : String -> Cmd msg
