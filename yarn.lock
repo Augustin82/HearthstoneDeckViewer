@@ -437,8 +437,6 @@
   version "7.10.4"
   resolved "https://registry.yarnpkg.com/@babel/plugin-syntax-logical-assignment-operators/-/plugin-syntax-logical-assignment-operators-7.10.4.tgz#ca91ef46303530448b906652bac2e9fe9941f699"
   integrity sha512-d8waShlpFDinQ5MtvGU9xDAOzKH47+FFoney2baFIoMr952hKOLp1HR7VszoZvOsV/4+RRszNY7D17ba0te0ig==
-  dependencies:
-    "@babel/helper-plugin-utils" "^7.10.4"
 
 "@babel/plugin-syntax-nullish-coalescing-operator@^7.8.0":
   version "7.8.3"
@@ -451,8 +449,6 @@
   version "7.10.4"
   resolved "https://registry.yarnpkg.com/@babel/plugin-syntax-numeric-separator/-/plugin-syntax-numeric-separator-7.10.4.tgz#b9b070b3e33570cd9fd07ba7fa91c0dd37b9af97"
   integrity sha512-9H6YdfkcK/uOnY/K7/aA2xpzaAgkQn37yzWUMRK7OaPOqOpGS1+n0H5hxT9AUw9EsSjPW8SVyMJwYRtWs3X3ug==
-  dependencies:
-    "@babel/helper-plugin-utils" "^7.10.4"
 
 "@babel/plugin-syntax-object-rest-spread@^7.8.0":
   version "7.8.3"
@@ -834,10 +830,6 @@
   version "7.10.4"
   resolved "https://registry.yarnpkg.com/@babel/template/-/template-7.10.4.tgz#3251996c4200ebc71d1a8fc405fba940f36ba278"
   integrity sha512-ZCjD27cGJFUB6nmCB1Enki3r+L5kJveX9pq1SvAUKoICy6CZ9yD8xO086YXdYhvNjBdnekm4ZnaP5yC8Cs/1tA==
-  dependencies:
-    "@babel/code-frame" "^7.10.4"
-    "@babel/parser" "^7.10.4"
-    "@babel/types" "^7.10.4"
 
 "@babel/traverse@^7.10.4":
   version "7.11.5"
@@ -3297,6 +3289,11 @@ elm-test@^0.19.1-revision4:
     temp "^0.9.1"
     which "^2.0.2"
     xmlbuilder "^15.1.0"
+
+elm-tooling@^1.1.0:
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/elm-tooling/-/elm-tooling-1.1.0.tgz#3ce99b12f0ba82bdb53921a267835966f5a1432a"
+  integrity sha512-wziiwTbqBkK/905a6stCpTWJhYEKNb4CCYt36VEd5XWmaLSelMOR+SxKcEPpxsiK/tFZ4o0PbW+h1QC5tWfYUQ==
 
 elm-webpack-loader@^6.0.1:
   version "6.0.1"
